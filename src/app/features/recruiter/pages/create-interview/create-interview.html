@@ -1,1 +1,93 @@
-<p>create-interview works!</p>
+<div class="page-container flex items-center justify-center min-h-[calc(100vh-100px)]">
+  <div class="w-full max-w-2xl">
+    <div class="card-surface space-y-6">
+      
+      <div>
+        <h2 class="text-2xl font-bold tracking-tight bg-gradient-to-r from-primary to-purple-400 bg-clip-text text-transparent">
+          Create New Interview
+        </h2>
+        <p class="text-text-secondary text-sm mt-1">Fill in the details below to schedule an interview and generate a code.</p>
+      </div>
+
+      <!-- Error Message -->
+      @if (errorMessage()) {
+        <div class="alert-error">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-danger shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <span>{{ errorMessage() }}</span>
+        </div>
+      }
+
+      <!-- Form -->
+      <form [formGroup]="createForm" (ngSubmit)="onSubmit()" class="space-y-6">
+        
+        <!-- Title Input -->
+        <div class="space-y-2">
+          <label for="title" class="label-field">Interview Title</label>
+          <input type="text" id="title" formControlName="title" placeholder="e.g. Senior Frontend Engineer Technical Interview" 
+            class="input-field" />
+          @if (createForm.get('title')?.touched && createForm.get('title')?.invalid) {
+            <p class="text-danger text-xs mt-1">Title is required and must be at least 3 characters.</p>
+          }
+        </div>
+
+        <!-- Description Input -->
+        <div class="space-y-2">
+          <label for="description" class="label-field">Description / Candidate Instructions</label>
+          <textarea id="description" formControlName="description" rows="4" placeholder="Describe the interview context, guidelines, and outline for the candidate..."
+            class="input-field resize-none"></textarea>
+          @if (createForm.get('description')?.touched && createForm.get('description')?.invalid) {
+            <p class="text-danger text-xs mt-1">Description is required and must be at least 5 characters.</p>
+          }
+        </div>
+
+        <!-- Start & End Date Inputs -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div class="space-y-2">
+            <label for="startTime" class="label-field">Start Date & Time</label>
+            <input type="datetime-local" id="startTime" formControlName="startTime" 
+              class="input-field [color-scheme:dark]" />
+            @if (createForm.get('startTime')?.touched && createForm.get('startTime')?.invalid) {
+              <p class="text-danger text-xs mt-1">Start time is required.</p>
+            }
+          </div>
+
+          <div class="space-y-2">
+            <label for="endTime" class="label-field">End Date & Time</label>
+            <input type="datetime-local" id="endTime" formControlName="endTime" 
+              class="input-field [color-scheme:dark]" />
+            @if (createForm.get('endTime')?.touched && createForm.get('endTime')?.invalid) {
+              <p class="text-danger text-xs mt-1">End time is required.</p>
+            }
+          </div>
+        </div>
+
+        <!-- Date Range Custom Validator Error -->
+        @if (createForm.touched && createForm.errors?.['invalidDates']) {
+          <div class="p-3 bg-danger/10 border border-danger/20 text-danger text-xs rounded-lg">
+            End date & time must be strictly after the start date & time.
+          </div>
+        }
+
+        <!-- Actions -->
+        <div class="flex items-center justify-end gap-4 pt-4 border-t border-border-default/60">
+          <a routerLink="/interviews" class="btn-secondary px-5 py-2.5">
+            Cancel
+          </a>
+          <button type="submit" [disabled]="createForm.invalid || isLoading()" 
+            class="btn-primary px-5 py-2.5">
+            @if (isLoading()) {
+              <div class="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
+              Saving...
+            } @else {
+              Create Schedule
+            }
+          </button>
+        </div>
+
+      </form>
+
+    </div>
+  </div>
+</div>

@@ -1,3 +1,81 @@
-/* You can add global styles to this file, and also import other style files */
-
 @import 'tailwindcss';
+
+@theme {
+  --color-bg-base: #030712;
+  --color-bg-surface: #0f172a;
+  --color-bg-elevated: #1e293b;
+  --color-border-default: #1e293b;
+  --color-border-subtle: #334155;
+  --color-text-primary: #f8fafc;
+  --color-text-secondary: #94a3b8;
+  --color-text-muted: #64748b;
+  
+  --color-primary: #6366f1;
+  --color-primary-hover: #818cf8;
+  --color-success: #10b981;
+  --color-warning: #f59e0b;
+  --color-danger: #ef4444;
+}
+
+/* Global resets and layout defaults */
+html, body {
+  margin: 0;
+  padding: 0;
+  background-color: var(--color-bg-base);
+  color: var(--color-text-primary);
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  min-height: 100vh;
+}
+
+/* Reusable Components/Utilities via standard CSS */
+.page-container {
+  @apply max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8;
+}
+
+.card-surface {
+  @apply bg-bg-surface/40 backdrop-blur-md border border-border-default/80 rounded-2xl p-6 transition-all duration-300 shadow-xl;
+}
+
+.card-elevated {
+  @apply bg-bg-elevated/50 backdrop-blur-md border border-border-subtle/50 rounded-2xl p-6 transition-all duration-300 shadow-2xl;
+}
+
+.input-field {
+  @apply w-full bg-bg-base/80 border border-border-default hover:border-border-subtle focus:border-primary focus:ring-1 focus:ring-primary rounded-xl px-4 py-3 text-text-primary placeholder-text-muted transition-all outline-none;
+}
+
+.label-field {
+  @apply block text-sm font-semibold text-text-secondary mb-1.5;
+}
+
+.btn-primary {
+  @apply inline-flex items-center justify-center gap-2 px-5 py-3 bg-gradient-to-r from-primary to-purple-600 hover:from-primary-hover hover:to-purple-500 disabled:from-bg-elevated disabled:to-bg-elevated disabled:text-text-muted text-white font-bold rounded-xl shadow-lg transition-all active:scale-[0.98] cursor-pointer;
+}
+
+.btn-secondary {
+  @apply inline-flex items-center justify-center gap-2 px-5 py-3 bg-bg-base hover:bg-bg-surface border border-border-default hover:border-border-subtle text-text-secondary hover:text-text-primary font-semibold rounded-xl transition-all active:scale-[0.98] cursor-pointer;
+}
+
+.btn-danger {
+  @apply inline-flex items-center justify-center gap-2 px-5 py-3 bg-danger hover:bg-red-600 text-white font-bold rounded-xl shadow-lg transition-all active:scale-[0.98] cursor-pointer;
+}
+
+.section-title {
+  @apply text-3xl font-extrabold tracking-tight bg-gradient-to-r from-primary to-purple-400 bg-clip-text text-transparent;
+}
+
+.status-badge {
+  @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold uppercase tracking-wider border;
+}
+
+.spinner {
+  @apply w-12 h-12 border-4 border-primary/20 border-t-primary rounded-full animate-spin;
+}
+
+.alert-error {
+  @apply p-4 bg-danger/10 border border-danger/30 rounded-xl text-danger flex items-center gap-3 text-sm;
+}
+
+.alert-success {
+  @apply p-4 bg-success/10 border border-success/30 rounded-xl text-success flex items-center gap-3 text-sm;
+}

@@ -1,1 +1,171 @@
-<p>join works!</p>
+<div class="page-container flex items-center justify-center min-h-[calc(100vh-100px)]">
+  <div class="w-full max-w-2xl space-y-6">
+    
+    <!-- Navigation back to Dashboard -->
+    <a routerLink="/dashboard" class="inline-flex items-center gap-1.5 text-sm text-text-secondary hover:text-primary transition-colors group cursor-pointer">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 transform group-hover:-translate-x-0.5 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
+      </svg>
+      Dashboard
+    </a>
+
+    <!-- Case A: Candidate NOT joined yet -->
+    @if (!joinedInterview()) {
+      <div class="card-surface space-y-6">
+        
+        <div class="text-center space-y-2">
+          <div class="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center text-primary mx-auto border border-primary/20">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15 7a2 2 0 012 2m0 5a2 2 0 01-2 2m0-8a2 2 0 00-2-2m0 8a2 2 0 00-2 2m-2-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <h2 class="text-2xl font-bold tracking-tight">Join Interview</h2>
+          <p class="text-text-secondary text-sm">Enter the unique 6-character access code provided by your recruiter, sir.</p>
+        </div>
+
+        <!-- Error Alert -->
+        @if (errorMessage()) {
+          <div class="alert-error">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-danger shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span>{{ errorMessage() }}</span>
+          </div>
+        }
+
+        <!-- Join Form -->
+        <form [formGroup]="joinForm" (ngSubmit)="onSubmit()" class="space-y-6">
+          <div class="space-y-2">
+            <label for="interviewCode" class="label-field">Access Code</label>
+            <input type="text" id="interviewCode" formControlName="interviewCode" placeholder="e.g. ABC123" maxlength="6"
+              class="w-full bg-bg-base/80 border border-border-default hover:border-border-subtle focus:border-primary focus:ring-1 focus:ring-primary rounded-xl px-4 py-3.5 text-center text-2xl font-mono font-bold tracking-widest text-primary placeholder-text-muted transition-all outline-none uppercase" />
+            
+            @if (joinForm.get('interviewCode')?.touched && joinForm.get('interviewCode')?.invalid) {
+              <div class="text-danger text-xs text-center space-y-0.5 mt-1.5">
+                @if (joinForm.get('interviewCode')?.errors?.['required']) {
+                  <p>Code is required.</p>
+                } @else if (joinForm.get('interviewCode')?.errors?.['pattern']) {
+                  <p>Code must be alphanumeric.</p>
+                } @else {
+                  <p>Code must be exactly 6 characters.</p>
+                }
+              </div>
+            }
+          </div>
+
+          <!-- Quick instructions list -->
+          <div class="bg-bg-base/40 border border-border-default rounded-xl p-4 space-y-2 text-xs text-text-secondary">
+            <h4 class="font-bold text-text-primary uppercase tracking-widest text-[9px]">Security Guidelines</h4>
+            <ul class="list-disc list-inside space-y-1">
+              <li>Keep your webcam and microphone active.</li>
+              <li>Avoid switching browser tabs or windows during testing.</li>
+              <li>A stable internet connection is required to submit.</li>
+            </ul>
+          </div>
+
+          <button type="submit" [disabled]="joinForm.invalid || isLoading()" class="btn-primary w-full">
+            @if (isLoading()) {
+              <div class="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
+              Verifying Code...
+            } @else {
+              Join Interview Room
+            }
+          </button>
+        </form>
+
+      </div>
+    } @else {
+      <!-- Case B: Redesigned Success Screen -->
+      <div class="card-surface space-y-8 shadow-2xl relative overflow-hidden">
+        
+        <!-- Animated visual success ring background -->
+        <div class="absolute -top-10 -right-10 w-32 h-32 bg-success/5 rounded-full blur-2xl"></div>
+
+        <!-- Section 1: Success Header -->
+        <div class="text-center space-y-3">
+          <div class="w-16 h-16 bg-success/15 rounded-full flex items-center justify-center text-success mx-auto border border-success/30 relative shadow-lg shadow-success/10">
+            <span class="absolute inline-flex h-full w-full rounded-full bg-success/10 animate-ping opacity-75"></span>
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-8 h-8 relative z-10" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+          </div>
+          <h2 class="text-3xl font-extrabold text-text-primary tracking-tight">Verification Successful</h2>
+          <p class="text-text-secondary text-sm max-w-md mx-auto">Your access code is authorized. Please confirm the interview details below, sir.</p>
+        </div>
+
+        <div class="space-y-6">
+          
+          <!-- Section 2: Interview Information Card -->
+          <div class="bg-bg-base/40 border border-border-default rounded-2xl p-5 space-y-3">
+            <div>
+              <span class="text-[10px] text-text-muted uppercase tracking-widest font-bold block">Interview Session</span>
+              <h3 class="text-xl font-bold text-text-primary mt-0.5">{{ joinedInterview()?.title }}</h3>
+            </div>
+            
+            <hr class="border-border-default/60" />
+            
+            <div>
+              <span class="text-[10px] text-text-muted uppercase tracking-widest font-bold block">Description & Rules</span>
+              <p class="text-text-secondary text-sm mt-1 leading-relaxed whitespace-pre-line">
+                {{ joinedInterview()?.description }}
+              </p>
+            </div>
+          </div>
+
+          <!-- Section 3: Interview Timing Card -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div class="bg-bg-surface/50 border border-border-default rounded-xl p-4 flex items-center gap-3">
+              <div class="p-2.5 bg-primary/10 text-primary rounded-lg border border-primary/20">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+              </div>
+              <div>
+                <span class="text-[9px] text-text-muted uppercase tracking-widest font-bold block">Starts At</span>
+                <p class="text-text-primary text-xs font-semibold mt-0.5">{{ joinedInterview()?.startTime | date:'medium' }}</p>
+              </div>
+            </div>
+
+            <div class="bg-bg-surface/50 border border-border-default rounded-xl p-4 flex items-center gap-3">
+              <div class="p-2.5 bg-purple-600/10 text-purple-400 rounded-lg border border-purple-600/20">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <div>
+                <span class="text-[9px] text-text-muted uppercase tracking-widest font-bold block">Ends At</span>
+                <p class="text-text-primary text-xs font-semibold mt-0.5">{{ joinedInterview()?.endTime | date:'medium' }}</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Section 4: Candidate Status Card -->
+          <div class="bg-bg-base/30 border border-border-default rounded-xl p-4 flex items-center justify-between text-xs">
+            <span class="text-text-secondary font-medium">Candidate Identity Verified:</span>
+            <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-success/10 text-success border border-success/20">
+              <span class="w-2 h-2 bg-success rounded-full animate-pulse"></span>
+              Ready to Begin
+            </span>
+          </div>
+
+        </div>
+
+        <!-- Section 5: Action Buttons -->
+        <div class="flex flex-col sm:flex-row gap-4 pt-4 border-t border-border-default/60">
+          <button (click)="resetJoin()" class="btn-secondary w-full order-2 sm:order-1">
+            Use Another Code
+          </button>
+          
+          <a [routerLink]="['/interview-room', joinedInterview()?._id]" class="btn-primary w-full order-1 sm:order-2">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            </svg>
+            Enter Interview Lobby
+          </a>
+        </div>
+
+      </div>
+    }
+
+  </div>
+</div>

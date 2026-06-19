@@ -1,0 +1,20 @@
+<div class="min-h-screen flex flex-col justify-center bg-bg-base px-4 py-12 sm:px-6 lg:px-8 relative overflow-hidden">
+  <!-- Interactive radial background glows -->
+  <div class="absolute top-[-20%] left-[-20%] w-[60%] h-[60%] rounded-full bg-primary/5 blur-[120px] pointer-events-none"></div>
+  <div class="absolute bottom-[-20%] right-[-20%] w-[60%] h-[60%] rounded-full bg-purple-600/5 blur-[120px] pointer-events-none"></div>
+
+  <div class="sm:mx-auto sm:w-full sm:max-w-md z-10">
+    <div class="flex items-center justify-center gap-3 mb-6">
+      <div class="bg-primary p-2.5 rounded-xl text-white font-black text-xl tracking-wider shadow-lg shadow-primary/20">
+        IG
+      </div>
+      <span class="text-2xl font-black tracking-tight bg-gradient-to-r from-primary to-purple-400 bg-clip-text text-transparent">
+        Interview Guard AI
+      </span>
+    </div>
+  </div>
+
+  <div class="sm:mx-auto sm:w-full sm:max-w-md z-10">
+    <router-outlet></router-outlet>
+  </div>
+</div>

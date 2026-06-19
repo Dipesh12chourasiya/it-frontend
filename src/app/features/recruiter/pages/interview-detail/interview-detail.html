@@ -1,1 +1,156 @@
-<p>interview-detail works!</p>
+<div class="page-container space-y-6">
+  
+  <!-- Back button -->
+  <a routerLink="/interviews" class="inline-flex items-center gap-1.5 text-sm text-text-secondary hover:text-primary transition-colors group cursor-pointer">
+    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 transform group-hover:-translate-x-0.5 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
+    </svg>
+    Back to Interviews
+  </a>
+
+  <!-- Main Container -->
+  <div class="card-surface !p-0 overflow-hidden">
+    
+    <!-- Top header strip -->
+    <div class="px-8 py-4 bg-bg-surface/60 border-b border-border-default flex items-center justify-between">
+      <span class="text-xs font-semibold text-primary uppercase tracking-widest">Session Details</span>
+      @if (interview()) {
+        <span class="text-[10px] text-text-muted font-mono">ID: {{ interview()?._id }}</span>
+      }
+    </div>
+
+    <!-- Loading / Error / Content -->
+    @if (isLoading()) {
+      <div class="flex flex-col items-center justify-center py-24 space-y-4">
+        <div class="spinner"></div>
+        <p class="text-text-secondary animate-pulse">Loading interview details, sir...</p>
+      </div>
+    } @else if (errorMessage()) {
+      <div class="p-8 text-center space-y-4">
+        <div class="w-14 h-14 bg-danger/10 rounded-full flex items-center justify-center text-danger mx-auto border border-danger/20">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </div>
+        <h3 class="text-lg font-bold text-text-primary">Error Occurred</h3>
+        <p class="text-text-secondary text-sm max-w-sm mx-auto">{{ errorMessage() }}</p>
+        <a routerLink="/interviews" class="btn-secondary px-5 py-2">
+          Return to List
+        </a>
+      </div>
+    } @else if (interview()) {
+      <div class="p-8 space-y-8">
+        
+        <!-- Alert notifications -->
+        @if (successMessage()) {
+          <div class="alert-success">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-success shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span>{{ successMessage() }}</span>
+          </div>
+        }
+
+        <!-- Header Title and Status selector -->
+        <div class="flex flex-col md:flex-row justify-between items-start gap-6 pb-6 border-b border-border-default/60">
+          <div class="space-y-1 max-w-xl">
+            <h1 class="text-3xl font-extrabold text-text-primary tracking-tight">{{ interview()?.title }}</h1>
+            <p class="text-text-secondary text-sm font-medium">Scheduled by Recruiter</p>
+          </div>
+
+          <!-- Status Control Card -->
+          <div class="bg-bg-base/60 border border-border-default rounded-2xl p-4 flex items-center gap-4 w-full md:w-auto shrink-0">
+            <div class="space-y-0.5">
+              <span class="text-[10px] text-text-muted uppercase tracking-widest font-semibold">Active Status</span>
+              <div class="flex items-center gap-1.5 mt-0.5">
+                <span class="w-2 h-2 rounded-full"
+                  [ngClass]="{
+                    'bg-primary animate-pulse': interview()?.status === 'scheduled',
+                    'bg-success animate-ping': interview()?.status === 'active',
+                    'bg-text-secondary': interview()?.status === 'completed'
+                  }">
+                </span>
+                <span class="text-sm font-bold text-text-primary capitalize">{{ interview()?.status }}</span>
+              </div>
+            </div>
+            
+            <div class="h-8 w-px bg-border-default"></div>
+
+            <div>
+              <select [ngModel]="interview()?.status" (ngModelChange)="updateStatus($event)" [disabled]="isUpdating()"
+                class="bg-bg-surface border border-border-subtle text-text-primary text-xs rounded-xl px-3 py-2 outline-none focus:border-primary transition-all font-semibold cursor-pointer">
+                <option value="scheduled">Scheduled</option>
+                <option value="active">Active</option>
+                <option value="completed">Completed</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Middle Split Section -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+          
+          <!-- Code and details (Left/Col-1) -->
+          <div class="space-y-6 md:col-span-1">
+            <!-- Code Card -->
+            <div class="bg-bg-base/80 border border-primary/10 rounded-2xl p-5 space-y-3 relative overflow-hidden shadow-inner">
+              <div class="absolute -right-4 -bottom-4 w-20 h-20 bg-primary/5 rounded-full blur-xl"></div>
+              <span class="text-[10px] text-text-muted uppercase tracking-widest font-bold block">Secure Entry Code</span>
+              <div class="font-mono text-3xl font-extrabold tracking-widest text-primary">{{ interview()?.interviewCode }}</div>
+              <button (click)="copyCode(interview()!.interviewCode)" class="w-full mt-2 btn-secondary !py-2 !text-xs">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+                </svg>
+                Copy Access Code
+              </button>
+            </div>
+
+            <!-- Metadata details -->
+            <div class="bg-bg-base/30 border border-border-default rounded-2xl p-5 space-y-4 text-xs text-text-secondary">
+              <div class="flex justify-between items-center">
+                <span>Created:</span>
+                <span class="text-text-primary font-semibold font-mono">{{ interview()?.createdAt | date:'short' }}</span>
+              </div>
+              <div class="flex justify-between items-center">
+                <span>Last Modified:</span>
+                <span class="text-text-primary font-semibold font-mono">{{ interview()?.updatedAt | date:'short' }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Main Info (Right/Col-2) -->
+          <div class="md:col-span-2 space-y-6">
+            <!-- Description card -->
+            <div class="space-y-2">
+              <h3 class="text-sm font-bold text-text-secondary uppercase tracking-widest">Description & Guidelines</h3>
+              <div class="bg-bg-base/40 border border-border-default rounded-2xl p-6 text-text-primary text-sm leading-relaxed whitespace-pre-line">
+                {{ interview()?.description }}
+              </div>
+            </div>
+
+            <!-- Time timeline -->
+            <div class="space-y-2">
+              <h3 class="text-sm font-bold text-text-secondary uppercase tracking-widest">Timeline</h3>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div class="bg-bg-surface/40 border border-border-default rounded-xl p-4 space-y-1">
+                  <span class="text-[10px] text-text-muted uppercase tracking-widest font-bold">Start Time</span>
+                  <p class="text-text-primary text-sm font-semibold">{{ interview()?.startTime | date:'mediumDate' }}</p>
+                  <p class="text-text-secondary text-xs">{{ interview()?.startTime | date:'shortTime' }}</p>
+                </div>
+                <div class="bg-bg-surface/40 border border-border-default rounded-xl p-4 space-y-1">
+                  <span class="text-[10px] text-text-muted uppercase tracking-widest font-bold">End Time</span>
+                  <p class="text-text-primary text-sm font-semibold">{{ interview()?.endTime | date:'mediumDate' }}</p>
+                  <p class="text-text-secondary text-xs">{{ interview()?.endTime | date:'shortTime' }}</p>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+        </div>
+
+      </div>
+    }
+
+  </div>
+</div>
