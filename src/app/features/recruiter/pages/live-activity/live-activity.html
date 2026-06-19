@@ -1,0 +1,127 @@
+<div class="page-container space-y-8">
+
+  <!-- Header -->
+  <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+    <div>
+      <h1 class="section-title">Live Proctoring Feed</h1>
+      <p class="text-text-secondary mt-1">Real-time monitoring of candidate activity during active interviews.</p>
+    </div>
+
+    <a routerLink="/interviews" class="btn-secondary">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
+      </svg>
+      Back to Interviews
+    </a>
+  </div>
+
+  <!-- Interview Selector -->
+  <div class="card-surface space-y-4">
+    <div class="flex items-center justify-between">
+      <h3 class="text-sm font-bold text-text-secondary uppercase tracking-widest">Select Interview Session</h3>
+      @if (selectedInterviewId()) {
+        <div class="flex items-center gap-2">
+          <span class="flex items-center gap-1.5 px-3 py-1 bg-success/10 border border-success/20 rounded-full text-[10px] font-bold text-success uppercase tracking-wider">
+            <span class="w-2 h-2 bg-success rounded-full animate-pulse"></span>
+            Monitoring Active
+          </span>
+        </div>
+      }
+    </div>
+
+    @if (isLoading()) {
+      <div class="flex items-center justify-center py-8">
+        <div class="spinner"></div>
+      </div>
+    } @else if (interviews().length === 0) {
+      <div class="text-center py-8 text-text-secondary">
+        <p class="font-medium">No interviews found. Create one first, sir.</p>
+      </div>
+    } @else {
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        @for (iv of interviews(); track iv._id) {
+          <button
+            (click)="selectInterview(iv._id)"
+            class="text-left bg-bg-base/60 hover:bg-bg-elevated/40 border rounded-xl p-4 transition-all cursor-pointer group"
+            [class]="selectedInterviewId() === iv._id
+              ? 'border-primary/50 shadow-lg shadow-primary/5 ring-1 ring-primary/30'
+              : 'border-border-default hover:border-border-subtle'"
+          >
+            <div class="flex items-center justify-between gap-2 mb-2">
+              <span class="status-badge text-[9px]"
+                [ngClass]="{
+                  'bg-primary/10 text-primary border-primary/20': iv.status === 'scheduled',
+                  'bg-success/10 text-success border-success/20': iv.status === 'active',
+                  'bg-text-muted/10 text-text-secondary border-border-default/50': iv.status === 'completed'
+                }">
+                {{ iv.status }}
+              </span>
+              <span class="font-mono text-[10px] text-primary font-bold">{{ iv.interviewCode }}</span>
+            </div>
+            <h4 class="text-sm font-bold text-text-primary line-clamp-1 group-hover:text-primary transition-colors">{{ iv.title }}</h4>
+            <p class="text-[10px] text-text-muted mt-1">{{ iv.startTime | date:'medium' }}</p>
+          </button>
+        }
+      </div>
+    }
+  </div>
+
+  <!-- Live Event Feed -->
+  @if (selectedInterviewId()) {
+    <div class="card-surface !p-0 overflow-hidden">
+      
+      <!-- Feed Header -->
+      <div class="px-6 py-4 bg-bg-surface/40 border-b border-border-default flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <h3 class="text-sm font-bold text-text-primary uppercase tracking-widest">Activity Stream</h3>
+          <span class="bg-primary/10 text-primary text-[10px] font-bold px-2.5 py-0.5 rounded-full border border-primary/20">
+            {{ eventCount() }} events
+          </span>
+        </div>
+        <button (click)="clearEvents()" class="text-[10px] text-text-muted hover:text-danger font-semibold uppercase tracking-wider transition-colors cursor-pointer">
+          Clear
+        </button>
+      </div>
+
+      <!-- Events List -->
+      @if (liveEvents().length === 0) {
+        <div class="px-6 py-16 text-center">
+          <div class="w-14 h-14 bg-bg-elevated/50 rounded-full flex items-center justify-center mx-auto mb-4 border border-border-default">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-7 h-7 text-text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              <path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+            </svg>
+          </div>
+          <p class="text-text-secondary font-medium">Waiting for candidate activity...</p>
+          <p class="text-text-muted text-xs mt-1">Events will appear here in real-time as candidates interact, sir.</p>
+        </div>
+      } @else {
+        <div class="divide-y divide-border-default/40 max-h-[520px] overflow-y-auto">
+          @for (event of liveEvents(); track event.id) {
+            <div class="px-6 py-3.5 flex items-center gap-4 hover:bg-bg-surface/20 transition-colors animate-[fadeIn_0.3s_ease-out]">
+              
+              <!-- Event Icon -->
+              <div class="text-lg shrink-0 w-8 text-center">{{ event.icon }}</div>
+
+              <!-- Event Detail -->
+              <div class="flex-grow min-w-0">
+                <p class="text-sm font-semibold text-text-primary truncate" [class]="event.color">
+                  {{ getEventLabel(event) }}
+                </p>
+                @if (event.candidateEmail) {
+                  <p class="text-[10px] text-text-muted truncate">{{ event.candidateEmail }}</p>
+                }
+              </div>
+
+              <!-- Timestamp -->
+              <div class="text-[10px] text-text-muted font-mono shrink-0">
+                {{ event.timestamp | date:'shortTime' }}
+              </div>
+            </div>
+          }
+        </div>
+      }
+    </div>
+  }
+
+</div>

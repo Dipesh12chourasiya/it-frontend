@@ -79,3 +79,9 @@ html, body {
 .alert-success {
   @apply p-4 bg-success/10 border border-success/30 rounded-xl text-success flex items-center gap-3 text-sm;
 }
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+

@@ -3,6 +3,8 @@ import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { SessionService } from '../../../../core/services/session.service';
 import { AuthService } from '../../../../core/services/auth.service';
+import { MonitoringService } from '../../../../core/services/monitoring.service';
+import { SocketService } from '../../../../core/services/socket.service';
 import { Session } from '../../../../core/models/session.model';
 import { Interview } from '../../../../core/models/interview.model';
 
@@ -17,6 +19,8 @@ export class InterviewRoom implements OnInit, OnDestroy {
   private readonly router = inject(Router);
   private readonly sessionService = inject(SessionService);
   private readonly authService = inject(AuthService);
+  private readonly monitoringService = inject(MonitoringService);
+  private readonly socketService = inject(SocketService);
 
   // Core component signals
   readonly isLoading = signal<boolean>(true);
@@ -24,12 +28,13 @@ export class InterviewRoom implements OnInit, OnDestroy {
   readonly session = signal<Session | null>(null);
   readonly interview = signal<Interview | null>(null);
   readonly elapsedTime = signal<string>('00:00:00');
-  readonly connectionStatus = signal<string>('Connected');
+  readonly connectionStatus = signal<string>('Connecting...');
   readonly trustScore = signal<number>(100);
 
   readonly currentUser = this.authService.currentUser;
 
   private timerInterval: any;
+  private currentInterviewId: string | null = null;
 
   ngOnInit(): void {
     const interviewId = this.route.snapshot.paramMap.get('interviewId');
@@ -39,22 +44,27 @@ export class InterviewRoom implements OnInit, OnDestroy {
       return;
     }
 
+    this.currentInterviewId = interviewId;
     this.startInterviewSession(interviewId);
   }
 
   ngOnDestroy(): void {
     this.clearTimer();
+    this.monitoringService.stopMonitoring();
+
+    // Leave socket room and disconnect
+    if (this.currentInterviewId) {
+      this.socketService.leaveInterview(this.currentInterviewId);
+    }
+    this.socketService.off('trust-score-updated');
+    this.socketService.disconnect();
   }
 
-  /**
-   * Triggers the start of an interview session on the backend
-   */
   private startInterviewSession(interviewId: string): void {
     this.sessionService.startSession(interviewId).subscribe({
       next: (res) => {
         this.session.set(res.data);
-        
-        // Fetch full interview details so we have title/description
+
         this.sessionService.getSessionById(res.data._id).subscribe({
           next: (detailsRes) => {
             const sessionData = detailsRes.data;
@@ -62,6 +72,33 @@ export class InterviewRoom implements OnInit, OnDestroy {
               this.interview.set(sessionData.interviewId as Interview);
             }
             this.startTimer(sessionData.joinedAt);
+
+            // Start browser activity monitoring
+            const candidateId = this.currentUser()?._id;
+            if (candidateId) {
+              this.monitoringService.startMonitoring(interviewId, candidateId);
+            }
+
+            // Connect socket and join room
+            this.socketService.connect();
+            this.socketService.listen('connect', () => {
+              this.connectionStatus.set('Connected');
+              this.socketService.joinInterview(interviewId);
+            });
+
+            // Listen for trust score updates from the server
+            this.socketService.listen<{ candidateId: string; score: number }>('trust-score-updated', (data) => {
+              if (data.candidateId === this.currentUser()?._id) {
+                this.trustScore.set(data.score);
+              }
+            });
+
+            // Mirror socket connection state
+            if (this.socketService.isConnected()) {
+              this.connectionStatus.set('Connected');
+              this.socketService.joinInterview(interviewId);
+            }
+
             this.isLoading.set(false);
           },
           error: (err) => {
@@ -79,9 +116,6 @@ export class InterviewRoom implements OnInit, OnDestroy {
     });
   }
 
-  /**
-   * Initializes the visual clock timer
-   */
   private startTimer(joinedAt: string): void {
     this.clearTimer();
     const joinedTime = new Date(joinedAt).getTime();
@@ -99,13 +133,9 @@ export class InterviewRoom implements OnInit, OnDestroy {
       const mins = Math.floor((diff % 3600000) / 60000);
       const secs = Math.floor((diff % 60000) / 1000);
 
-      const formatted = [
-        String(hrs).padStart(2, '0'),
-        String(mins).padStart(2, '0'),
-        String(secs).padStart(2, '0')
-      ].join(':');
-
-      this.elapsedTime.set(formatted);
+      this.elapsedTime.set(
+        [String(hrs).padStart(2, '0'), String(mins).padStart(2, '0'), String(secs).padStart(2, '0')].join(':')
+      );
     }, 1000);
   }
 
@@ -115,9 +145,6 @@ export class InterviewRoom implements OnInit, OnDestroy {
     }
   }
 
-  /**
-   * Leaves the active interview session, updating status on backend
-   */
   leaveInterview(): void {
     const activeSession = this.session();
     if (!activeSession) {
@@ -126,14 +153,19 @@ export class InterviewRoom implements OnInit, OnDestroy {
     }
 
     this.isLoading.set(true);
+    this.monitoringService.stopMonitoring();
+
+    if (this.currentInterviewId) {
+      this.socketService.leaveInterview(this.currentInterviewId);
+    }
+
     this.sessionService.endSession(activeSession._id).subscribe({
       next: () => {
         this.clearTimer();
+        this.socketService.disconnect();
         this.router.navigate(['/dashboard']);
       },
-      error: (err) => {
-        console.error('Failed to end session gracefully:', err);
-        // Fallback to dashboard regardless
+      error: () => {
         this.router.navigate(['/dashboard']);
       }
     });
