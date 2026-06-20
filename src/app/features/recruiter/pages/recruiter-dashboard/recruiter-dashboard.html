@@ -1,0 +1,266 @@
+<div class="page-container space-y-8">
+
+  <!-- Header -->
+  <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+    <div>
+      <h1 class="section-title">Recruiter Dashboard</h1>
+      <p class="text-text-secondary mt-1">Real-time candidate monitoring and trust scoring during interviews.</p>
+    </div>
+    <div class="flex items-center gap-3">
+      @if (selectedInterviewId()) {
+        <button (click)="refreshDashboard()" class="btn-secondary">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+          Refresh
+        </button>
+      }
+      <a routerLink="/interviews" class="btn-secondary">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
+        </svg>
+        All Interviews
+      </a>
+    </div>
+  </div>
+
+  <!-- Interview Selector -->
+  <div class="card-surface space-y-4">
+    <div class="flex items-center justify-between">
+      <h3 class="text-sm font-bold text-text-secondary uppercase tracking-widest">Select Interview to Monitor</h3>
+      @if (selectedInterviewId()) {
+        <div class="flex items-center gap-2">
+          <span class="flex items-center gap-1.5 px-3 py-1 bg-success/10 border border-success/20 rounded-full text-[10px] font-bold text-success uppercase tracking-wider">
+            <span class="w-2 h-2 bg-success rounded-full animate-pulse"></span>
+            Live Monitoring
+          </span>
+        </div>
+      }
+    </div>
+
+    @if (interviews().length === 0) {
+      <div class="text-center py-8 text-text-secondary">
+        <p class="font-medium">No interviews found. Create one first, sir.</p>
+      </div>
+    } @else {
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        @for (iv of interviews(); track iv._id) {
+          <button
+            (click)="selectInterview(iv._id)"
+            class="text-left bg-bg-base/60 hover:bg-bg-elevated/40 border rounded-xl p-4 transition-all cursor-pointer group"
+            [class]="selectedInterviewId() === iv._id
+              ? 'border-primary/50 shadow-lg shadow-primary/5 ring-1 ring-primary/30'
+              : 'border-border-default hover:border-border-subtle'"
+          >
+            <div class="flex items-center justify-between gap-2 mb-2">
+              <span class="status-badge text-[9px]"
+                [ngClass]="{
+                  'bg-primary/10 text-primary border-primary/20': iv.status === 'scheduled',
+                  'bg-success/10 text-success border-success/20': iv.status === 'active',
+                  'bg-text-muted/10 text-text-secondary border-border-default/50': iv.status === 'completed'
+                }">
+                {{ iv.status }}
+              </span>
+              <span class="font-mono text-[10px] text-primary font-bold">{{ iv.interviewCode }}</span>
+            </div>
+            <h4 class="text-sm font-bold text-text-primary line-clamp-1 group-hover:text-primary transition-colors">{{ iv.title }}</h4>
+            <p class="text-[10px] text-text-muted mt-1">{{ iv.startTime | date:'medium' }}</p>
+          </button>
+        }
+      </div>
+    }
+  </div>
+
+  <!-- Dashboard Content (only when interview selected) -->
+  @if (selectedInterviewId()) {
+
+    <!-- Overview Stats Cards -->
+    @if (dashboardData()) {
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div class="bg-bg-surface/20 border border-border-default p-5 rounded-2xl">
+          <span class="text-[10px] font-semibold text-text-muted uppercase tracking-wider">Candidates</span>
+          <h3 class="text-3xl font-bold mt-1 text-text-primary">{{ dashboardData()!.candidates.length }}</h3>
+        </div>
+        <div class="bg-bg-surface/20 border border-border-default p-5 rounded-2xl">
+          <div class="flex items-center gap-2">
+            <span class="text-[10px] font-semibold text-text-muted uppercase tracking-wider">Online Now</span>
+            @if (onlineCount() > 0) {
+              <span class="w-2 h-2 bg-success rounded-full animate-pulse"></span>
+            }
+          </div>
+          <h3 class="text-3xl font-bold mt-1 text-success">{{ onlineCount() }}</h3>
+        </div>
+        <div class="bg-bg-surface/20 border border-border-default p-5 rounded-2xl">
+          <span class="text-[10px] font-semibold text-text-muted uppercase tracking-wider">Avg Trust Score</span>
+          <h3 class="text-3xl font-bold mt-1"
+              [ngClass]="avgScore() >= 80 ? 'text-success' : avgScore() >= 50 ? 'text-warning' : 'text-danger'">
+            {{ avgScore() }}
+          </h3>
+        </div>
+        <div class="bg-bg-surface/20 border border-border-default p-5 rounded-2xl">
+          <span class="text-[10px] font-semibold text-text-muted uppercase tracking-wider">Total Events</span>
+          <h3 class="text-3xl font-bold mt-1 text-primary">{{ totalEvents() }}</h3>
+        </div>
+      </div>
+    }
+
+    <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+
+      <!-- Candidate Cards Panel -->
+      <div class="xl:col-span-2 space-y-4">
+        <div class="flex items-center justify-between">
+          <h3 class="text-sm font-bold text-text-secondary uppercase tracking-widest">Candidate Monitor</h3>
+          @if (isLoadingDashboard()) {
+            <div class="spinner"></div>
+          }
+        </div>
+
+        @if (dashboardData()?.candidates?.length === 0) {
+          <div class="card-surface text-center py-12">
+            <svg class="mx-auto h-12 w-12 text-text-muted mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+            <p class="font-medium text-text-primary">No candidates have joined yet</p>
+            <p class="text-sm text-text-muted mt-1">Candidates will appear here once they join the interview room.</p>
+          </div>
+        } @else {
+          <div class="space-y-3">
+            @for (candidate of dashboardData()?.candidates; track candidate.candidateId) {
+              <div class="card-surface !p-0 overflow-hidden transition-all hover:border-primary/30 cursor-pointer"
+                   [class]="selectedCandidateId() === candidate.candidateId ? 'ring-1 ring-primary/40 border-primary/40' : ''"
+                   (click)="selectCandidate(selectedCandidateId() === candidate.candidateId ? null : candidate.candidateId)">
+
+                <!-- Candidate Header -->
+                <div class="px-5 py-4 flex items-center justify-between gap-4">
+                  <div class="flex items-center gap-3 min-w-0">
+                    <!-- Connection dot -->
+                    <div class="w-2.5 h-2.5 rounded-full shrink-0"
+                         [ngClass]="getConnectionColor(candidate.connectionStatus)"
+                         [class.animate-pulse]="candidate.connectionStatus === 'ONLINE'"></div>
+
+                    <div class="min-w-0">
+                      <div class="flex items-center gap-2">
+                        <h4 class="text-sm font-bold text-text-primary truncate">{{ candidate.candidateName }}</h4>
+                        <span class="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border"
+                              [ngClass]="getRiskBg(candidate.riskLevel)">
+                          {{ candidate.riskLevel }}
+                        </span>
+                      </div>
+                      <p class="text-[10px] text-text-muted truncate">{{ candidate.candidateEmail }}</p>
+                    </div>
+                  </div>
+
+                  <div class="flex items-center gap-4 shrink-0">
+                    <!-- Trust Score -->
+                    <div class="text-right">
+                      <div class="text-2xl font-bold"
+                           [ngClass]="getRiskColor(candidate.riskLevel)">
+                        {{ candidate.trustScore }}
+                      </div>
+                      <span class="text-[9px] text-text-muted font-semibold uppercase">Score</span>
+                    </div>
+
+                    <!-- Connection Status -->
+                    <div class="text-right">
+                      <span class="text-[10px] font-bold uppercase tracking-wider"
+                            [ngClass]="candidate.connectionStatus === 'ONLINE' ? 'text-success' : candidate.connectionStatus === 'RECONNECTING' ? 'text-warning' : 'text-text-muted'">
+                        {{ getConnectionLabel(candidate.connectionStatus) }}
+                      </span>
+                      <div class="text-[9px] text-text-muted">
+                        {{ candidate.lastActivity ? formatTime(candidate.lastActivity) : 'No activity' }}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Trust Score Bar -->
+                <div class="px-5 pb-2">
+                  <div class="w-full h-1.5 bg-bg-elevated rounded-full overflow-hidden">
+                    <div class="h-full rounded-full transition-all duration-700"
+                         [ngClass]="getScoreBarColor(candidate.trustScore)"
+                         [style.width]="getScoreBarWidth(candidate.trustScore)"></div>
+                  </div>
+                </div>
+
+                <!-- Expanded Stats (click to toggle) -->
+                @if (selectedCandidateId() === candidate.candidateId) {
+                  <div class="px-5 pb-5 pt-3 border-t border-border-default/40 animate-[slideDown_0.2s_ease-out]">
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                      <div class="bg-bg-base/60 rounded-lg p-3 border border-border-default/40">
+                        <span class="text-[9px] text-text-muted font-semibold uppercase">Tab Switches</span>
+                        <p class="text-lg font-bold text-warning mt-0.5">{{ candidate.statistics.totalTabSwitches }}</p>
+                      </div>
+                      <div class="bg-bg-base/60 rounded-lg p-3 border border-border-default/40">
+                        <span class="text-[9px] text-text-muted font-semibold uppercase">Paste Events</span>
+                        <p class="text-lg font-bold text-danger mt-0.5">{{ candidate.statistics.totalPasteEvents }}</p>
+                      </div>
+                      <div class="bg-bg-base/60 rounded-lg p-3 border border-border-default/40">
+                        <span class="text-[9px] text-text-muted font-semibold uppercase">Copy Events</span>
+                        <p class="text-lg font-bold text-warning mt-0.5">{{ candidate.statistics.totalCopyEvents }}</p>
+                      </div>
+                      <div class="bg-bg-base/60 rounded-lg p-3 border border-border-default/40">
+                        <span class="text-[9px] text-text-muted font-semibold uppercase">Fullscreen Exits</span>
+                        <p class="text-lg font-bold text-danger mt-0.5">{{ candidate.statistics.totalFullscreenExits }}</p>
+                      </div>
+                    </div>
+
+                    <!-- Recent Events -->
+                    @if (candidate.recentEvents.length > 0) {
+                      <h4 class="text-[10px] font-bold text-text-secondary uppercase tracking-widest mb-2">Recent Events</h4>
+                      <div class="space-y-1.5 max-h-40 overflow-y-auto">
+                        @for (event of candidate.recentEvents; track event._id) {
+                          <div class="flex items-center gap-3 text-xs py-1.5 px-3 rounded-lg bg-bg-base/40">
+                            <span class="text-sm shrink-0">{{ eventMeta[event.eventType]?.icon || '❓' }}</span>
+                            <span class="text-text-primary font-medium flex-grow">{{ eventMeta[event.eventType]?.label || event.eventType }}</span>
+                            <span class="text-text-muted font-mono text-[10px] shrink-0">{{ formatTime(event.timestamp) }}</span>
+                          </div>
+                        }
+                      </div>
+                    }
+                  </div>
+                }
+              </div>
+            }
+          </div>
+        }
+      </div>
+
+      <!-- Live Feed Sidebar -->
+      <div class="space-y-4">
+        <div class="flex items-center justify-between">
+          <h3 class="text-sm font-bold text-text-secondary uppercase tracking-widest">Live Feed</h3>
+          <button (click)="clearLiveEvents()" class="text-[10px] text-text-muted hover:text-danger font-semibold uppercase tracking-wider cursor-pointer">
+            Clear
+          </button>
+        </div>
+
+        <div class="card-surface !p-0 overflow-hidden">
+          @if (liveEvents().length === 0) {
+            <div class="px-5 py-12 text-center">
+              <svg class="mx-auto h-10 w-10 text-text-muted mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+              </svg>
+              <p class="text-text-secondary text-sm font-medium">Waiting for activity...</p>
+              <p class="text-text-muted text-[10px] mt-1">Events stream in real-time</p>
+            </div>
+          } @else {
+            <div class="divide-y divide-border-default/40 max-h-[600px] overflow-y-auto">
+              @for (event of liveEvents(); track event.id) {
+                <div class="px-4 py-3 flex items-center gap-3 hover:bg-bg-surface/20 transition-colors animate-[fadeIn_0.3s_ease-out]">
+                  <span class="text-sm shrink-0">{{ event.icon }}</span>
+                  <div class="flex-grow min-w-0">
+                    <p class="text-xs font-semibold truncate" [class]="event.color">{{ event.label }}</p>
+                  </div>
+                  <span class="text-[9px] text-text-muted font-mono shrink-0">{{ formatTimeShort(event.timestamp) }}</span>
+                </div>
+              }
+            </div>
+          }
+        </div>
+      </div>
+
+    </div>
+  }
+
+</div>

@@ -41,6 +41,12 @@ export const routes: Routes = [
         ]
       },
       {
+        path: 'dashboard-monitor',
+        canActivate: [roleGuard],
+        data: { roles: ['recruiter'] },
+        loadComponent: () => import('./features/recruiter/pages/recruiter-dashboard/recruiter-dashboard').then(m => m.RecruiterDashboard)
+      },
+      {
         path: 'live',
         canActivate: [roleGuard],
         data: { roles: ['recruiter'] },
