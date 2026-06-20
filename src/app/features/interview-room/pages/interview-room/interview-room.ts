@@ -22,7 +22,7 @@ export class InterviewRoom implements OnInit, OnDestroy {
   private readonly monitoringService = inject(MonitoringService);
   private readonly socketService = inject(SocketService);
 
-  // Core component signals
+  // Core signals
   readonly isLoading = signal<boolean>(true);
   readonly errorMessage = signal<string | null>(null);
   readonly session = signal<Session | null>(null);
@@ -36,6 +36,7 @@ export class InterviewRoom implements OnInit, OnDestroy {
   readonly remoteStreamSignal = signal<MediaStream | null>(null);
   readonly isMuted = signal<boolean>(false);
   readonly isCameraOff = signal<boolean>(false);
+  readonly isFullscreen = signal<boolean>(false);
 
   readonly currentUser = this.authService.currentUser;
 
@@ -45,6 +46,11 @@ export class InterviewRoom implements OnInit, OnDestroy {
   private peerConnection: RTCPeerConnection | null = null;
   private iceCandidatesQueue: RTCIceCandidateInit[] = [];
 
+  // Fullscreen change listener reference for cleanup
+  private fullscreenChangeHandler = () => {
+    this.isFullscreen.set(!!document.fullscreenElement);
+  };
+
   ngOnInit(): void {
     const interviewId = this.route.snapshot.paramMap.get('interviewId');
     if (!interviewId) {
@@ -52,8 +58,8 @@ export class InterviewRoom implements OnInit, OnDestroy {
       this.isLoading.set(false);
       return;
     }
-
     this.currentInterviewId = interviewId;
+    document.addEventListener('fullscreenchange', this.fullscreenChangeHandler);
     this.startInterviewSession(interviewId);
   }
 
@@ -62,12 +68,17 @@ export class InterviewRoom implements OnInit, OnDestroy {
     this.monitoringService.stopMonitoring();
     this.cleanupWebRTC();
 
-    // Leave socket room and disconnect
+    document.removeEventListener('fullscreenchange', this.fullscreenChangeHandler);
+
+    // Exit fullscreen if still active
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch(() => {});
+    }
+
     if (this.currentInterviewId) {
       this.socketService.leaveInterview(this.currentInterviewId);
     }
-    
-    // Clean socket event listeners
+
     this.socketService.off('trust-score-updated');
     this.socketService.off('peer-joined');
     this.socketService.off('peer-left');
@@ -78,6 +89,8 @@ export class InterviewRoom implements OnInit, OnDestroy {
     this.socketService.disconnect();
   }
 
+  // ─── Media ───────────────────────────────────────────────────────────────
+
   private async setupLocalMedia(): Promise<void> {
     try {
       this.localStream = await navigator.mediaDevices.getUserMedia({
@@ -87,44 +100,48 @@ export class InterviewRoom implements OnInit, OnDestroy {
       this.localStreamSignal.set(this.localStream);
     } catch (err) {
       console.error('[WebRTC] Camera/Microphone access failed:', err);
-      this.errorMessage.set('Access to camera or microphone was denied, sir. Please grant permissions and reload.');
+      this.errorMessage.set(
+        'Access to camera or microphone was denied, sir. Please grant permissions and reload.'
+      );
     }
   }
 
+  // ─── WebRTC signaling ─────────────────────────────────────────────────────
+
   private setupSignalingListeners(): void {
-    // Other peer joined: we are the existing peer, initiate connection
     this.socketService.listen('peer-joined', () => {
-      console.log('[WebRTC] Other peer joined. Initiating connection, sir...');
+      console.log('[WebRTC] Peer joined. Initiating call...');
       this.initiateCall();
     });
 
-    // Other peer left: clean up connection, wait for re-join
     this.socketService.listen('peer-left', () => {
-      console.log('[WebRTC] Peer left the session.');
+      console.log('[WebRTC] Peer left.');
       this.remoteStreamSignal.set(null);
-      if (this.peerConnection) {
-        this.peerConnection.close();
-        this.peerConnection = null;
-      }
+      this.peerConnection?.close();
+      this.peerConnection = null;
       this.iceCandidatesQueue = [];
     });
 
-    // Received offer from peer
-    this.socketService.listen<{ offer: RTCSessionDescriptionInit }>('webrtc-offer', async (data) => {
-      console.log('[WebRTC] Received offer, creating answer...');
-      await this.handleOffer(data.offer);
-    });
+    this.socketService.listen<{ offer: RTCSessionDescriptionInit }>(
+      'webrtc-offer',
+      async (data) => {
+        await this.handleOffer(data.offer);
+      }
+    );
 
-    // Received answer from peer
-    this.socketService.listen<{ answer: RTCSessionDescriptionInit }>('webrtc-answer', async (data) => {
-      console.log('[WebRTC] Received answer, establishing WebRTC tunnel...');
-      await this.handleAnswer(data.answer);
-    });
+    this.socketService.listen<{ answer: RTCSessionDescriptionInit }>(
+      'webrtc-answer',
+      async (data) => {
+        await this.handleAnswer(data.answer);
+      }
+    );
 
-    // Received ICE candidate
-    this.socketService.listen<{ candidate: RTCIceCandidateInit }>('webrtc-ice-candidate', async (data) => {
-      await this.handleIceCandidate(data.candidate);
-    });
+    this.socketService.listen<{ candidate: RTCIceCandidateInit }>(
+      'webrtc-ice-candidate',
+      async (data) => {
+        await this.handleIceCandidate(data.candidate);
+      }
+    );
   }
 
   private createPeerConnection(): RTCPeerConnection {
@@ -135,37 +152,28 @@ export class InterviewRoom implements OnInit, OnDestroy {
       ],
     });
 
-    // Attach local stream tracks to RTCPeerConnection
     if (this.localStream) {
-      console.log('[WebRTC Debug] Adding local tracks to connection, sir:', this.localStream.getTracks().map(t => t.kind));
+      console.log(
+        '[WebRTC] Adding local tracks:',
+        this.localStream.getTracks().map((t) => t.kind)
+      );
       this.localStream.getTracks().forEach((track) => {
         pc.addTrack(track, this.localStream!);
       });
-    } else {
-      console.warn('[WebRTC Debug] No local stream available during RTCPeerConnection creation.');
     }
 
-    // Handle incoming stream tracks
     pc.ontrack = (event) => {
-      console.log('[WebRTC Debug] Received remote track event:', event.track.kind, 'ID:', event.track.id);
-      
-      let remoteStream = this.remoteStreamSignal();
-      if (!remoteStream) {
-        remoteStream = new MediaStream();
-      }
+      console.log('[WebRTC] Remote track received:', event.track.kind);
 
-      // Add the remote track to our stream if it's not already added
-      if (!remoteStream.getTracks().find(t => t.id === event.track.id)) {
+      let remoteStream = this.remoteStreamSignal();
+      if (!remoteStream) remoteStream = new MediaStream();
+
+      if (!remoteStream.getTracks().find((t) => t.id === event.track.id)) {
         remoteStream.addTrack(event.track);
-        
-        // Instantiate a new MediaStream to force Angular change detection and DOM video/audio srcObject re-binding
         this.remoteStreamSignal.set(new MediaStream(remoteStream.getTracks()));
-        console.log('[WebRTC Debug] Re-bound remote stream with track:', event.track.kind);
-        this.debugPeerConnection();
       }
     };
 
-    // Emit ICE candidates to the socket signaling room
     pc.onicecandidate = (event) => {
       if (event.candidate && this.currentInterviewId) {
         this.socketService.emit('webrtc-ice-candidate', {
@@ -176,8 +184,7 @@ export class InterviewRoom implements OnInit, OnDestroy {
     };
 
     pc.onconnectionstatechange = () => {
-      console.log(`[WebRTC Debug] Connection state changed: ${pc.connectionState}`);
-      this.debugPeerConnection();
+      console.log('[WebRTC] Connection state:', pc.connectionState);
       if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
         this.remoteStreamSignal.set(null);
       }
@@ -187,27 +194,11 @@ export class InterviewRoom implements OnInit, OnDestroy {
     return pc;
   }
 
-  private debugPeerConnection(): void {
-    if (!this.peerConnection) {
-      console.log('[WebRTC Debug] Peer connection is uninitialized.');
-      return;
-    }
-    const senders = this.peerConnection.getSenders();
-    console.log('[WebRTC Debug] Senders (Tracks Sent):', senders.map(s => `${s.track?.kind} (enabled: ${s.track?.enabled}, readyState: ${s.track?.readyState})`));
-    const receivers = this.peerConnection.getReceivers();
-    console.log('[WebRTC Debug] Receivers (Tracks Received):', receivers.map(r => `${r.track?.kind} (enabled: ${r.track?.enabled}, readyState: ${r.track?.readyState})`));
-  }
-
-  onScreenShareClick(): void {
-    console.log('[UI Action] Screen share button clicked, sir.');
-  }
-
   private async initiateCall(): Promise<void> {
     const pc = this.createPeerConnection();
     try {
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
-
       if (this.currentInterviewId) {
         this.socketService.emit('webrtc-offer', {
           interviewId: this.currentInterviewId,
@@ -220,46 +211,40 @@ export class InterviewRoom implements OnInit, OnDestroy {
   }
 
   private async handleOffer(offer: RTCSessionDescriptionInit): Promise<void> {
-    if (this.peerConnection) {
-      this.peerConnection.close();
-    }
-
+    this.peerConnection?.close();
     const pc = this.createPeerConnection();
     try {
       await pc.setRemoteDescription(new RTCSessionDescription(offer));
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
-
       if (this.currentInterviewId) {
         this.socketService.emit('webrtc-answer', {
           interviewId: this.currentInterviewId,
           answer,
         });
       }
-
       await this.processIceCandidatesQueue();
     } catch (err) {
-      console.error('[WebRTC] Failed to handle offer and answer:', err);
+      console.error('[WebRTC] Failed to handle offer:', err);
     }
   }
 
   private async handleAnswer(answer: RTCSessionDescriptionInit): Promise<void> {
-    if (this.peerConnection) {
-      try {
-        await this.peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-        await this.processIceCandidatesQueue();
-      } catch (err) {
-        console.error('[WebRTC] Failed to set remote description from answer:', err);
-      }
+    if (!this.peerConnection) return;
+    try {
+      await this.peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+      await this.processIceCandidatesQueue();
+    } catch (err) {
+      console.error('[WebRTC] Failed to set remote description:', err);
     }
   }
 
   private async handleIceCandidate(candidate: RTCIceCandidateInit): Promise<void> {
-    if (this.peerConnection && this.peerConnection.remoteDescription) {
+    if (this.peerConnection?.remoteDescription) {
       try {
         await this.peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
       } catch (err) {
-        console.error('[WebRTC] Error adding ICE candidate:', err);
+        console.error('[WebRTC] ICE candidate error:', err);
       }
     } else {
       this.iceCandidatesQueue.push(candidate);
@@ -267,53 +252,71 @@ export class InterviewRoom implements OnInit, OnDestroy {
   }
 
   private async processIceCandidatesQueue(): Promise<void> {
-    if (this.peerConnection && this.peerConnection.remoteDescription) {
-      while (this.iceCandidatesQueue.length > 0) {
-        const candidate = this.iceCandidatesQueue.shift();
-        if (candidate) {
-          try {
-            await this.peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-          } catch (err) {
-            console.error('[WebRTC] Error adding queued ICE candidate:', err);
-          }
+    if (!this.peerConnection?.remoteDescription) return;
+    while (this.iceCandidatesQueue.length > 0) {
+      const candidate = this.iceCandidatesQueue.shift();
+      if (candidate) {
+        try {
+          await this.peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+        } catch (err) {
+          console.error('[WebRTC] Queued ICE candidate error:', err);
         }
       }
     }
   }
 
-  toggleMute(): void {
-    if (this.localStream) {
-      const audioTracks = this.localStream.getAudioTracks();
-      audioTracks.forEach((track) => {
-        track.enabled = !track.enabled;
-      });
-      this.isMuted.set(!audioTracks[0]?.enabled);
-    }
-  }
-
-  toggleCamera(): void {
-    if (this.localStream) {
-      const videoTracks = this.localStream.getVideoTracks();
-      videoTracks.forEach((track) => {
-        track.enabled = !track.enabled;
-      });
-      this.isCameraOff.set(!videoTracks[0]?.enabled);
-    }
-  }
-
   private cleanupWebRTC(): void {
-    if (this.localStream) {
-      this.localStream.getTracks().forEach((track) => track.stop());
-      this.localStream = null;
-      this.localStreamSignal.set(null);
-    }
-    if (this.peerConnection) {
-      this.peerConnection.close();
-      this.peerConnection = null;
-    }
+    this.localStream?.getTracks().forEach((track) => track.stop());
+    this.localStream = null;
+    this.localStreamSignal.set(null);
+    this.peerConnection?.close();
+    this.peerConnection = null;
     this.remoteStreamSignal.set(null);
     this.iceCandidatesQueue = [];
   }
+
+  // ─── Controls ─────────────────────────────────────────────────────────────
+
+  toggleMute(): void {
+    if (!this.localStream) return;
+    const tracks = this.localStream.getAudioTracks();
+    tracks.forEach((t) => (t.enabled = !t.enabled));
+    this.isMuted.set(!tracks[0]?.enabled);
+  }
+
+  toggleCamera(): void {
+    if (!this.localStream) return;
+    const tracks = this.localStream.getVideoTracks();
+    tracks.forEach((t) => (t.enabled = !t.enabled));
+    this.isCameraOff.set(!tracks[0]?.enabled);
+  }
+
+  async toggleFullscreen(): Promise<void> {
+    if (!document.fullscreenElement) {
+      const el = document.documentElement;
+      try {
+        await el.requestFullscreen();
+        this.isFullscreen.set(true);
+      } catch (err) {
+        console.error('[Fullscreen] Failed to enter fullscreen, sir:', err);
+      }
+    } else {
+      try {
+        await document.exitFullscreen();
+        this.isFullscreen.set(false);
+        // FULLSCREEN_EXIT is also fired by the browser's fullscreenchange event
+        // which MonitoringService handles. We don't duplicate-report here.
+      } catch (err) {
+        console.error('[Fullscreen] Failed to exit fullscreen, sir:', err);
+      }
+    }
+  }
+
+  onScreenShareClick(): void {
+    console.log('[UI] Screen share clicked — implementation pending, sir.');
+  }
+
+  // ─── Session initialization ───────────────────────────────────────────────
 
   private startInterviewSession(interviewId: string): void {
     this.sessionService.startSession(interviewId).subscribe({
@@ -326,18 +329,24 @@ export class InterviewRoom implements OnInit, OnDestroy {
             if (typeof sessionData.interviewId !== 'string') {
               this.interview.set(sessionData.interviewId as Interview);
             }
+
+            // Initialise trust score from persisted session value
+            if (typeof sessionData.score === 'number') {
+              this.trustScore.set(sessionData.score);
+            }
+
             this.startTimer(sessionData.joinedAt);
 
-            // Start browser activity monitoring
+            // Start monitoring engine
             const candidateId = this.currentUser()?._id;
             if (candidateId) {
               this.monitoringService.startMonitoring(interviewId, candidateId);
             }
 
-            // Grab media stream before connecting sockets for seamless call initialization
+            // Setup WebRTC media
             await this.setupLocalMedia();
 
-            // Connect socket, initialize signaling listeners and join
+            // Connect socket + join room
             this.socketService.connect();
             this.setupSignalingListeners();
 
@@ -346,14 +355,16 @@ export class InterviewRoom implements OnInit, OnDestroy {
               this.socketService.joinInterview(interviewId);
             });
 
-            // Listen for trust score updates from the server
-            this.socketService.listen<{ candidateId: string; score: number }>('trust-score-updated', (data) => {
-              if (data.candidateId === this.currentUser()?._id) {
-                this.trustScore.set(data.score);
+            // Listen for live trust-score updates
+            this.socketService.listen<{ candidateId: string; score: number; eventType: string }>(
+              'trust-score-updated',
+              (data) => {
+                if (data.candidateId === this.currentUser()?._id) {
+                  this.trustScore.set(data.score);
+                }
               }
-            });
+            );
 
-            // Mirror socket connection state
             if (this.socketService.isConnected()) {
               this.connectionStatus.set('Connected');
               this.socketService.joinInterview(interviewId);
@@ -365,45 +376,39 @@ export class InterviewRoom implements OnInit, OnDestroy {
             console.error('Failed to load session details:', err);
             this.errorMessage.set(err.error?.message || 'Failed to retrieve session details.');
             this.isLoading.set(false);
-          }
+          },
         });
       },
       error: (err) => {
-        console.error('Failed to start interview session:', err);
+        console.error('Failed to start session:', err);
         this.errorMessage.set(err.error?.message || 'Failed to initialize session room.');
         this.isLoading.set(false);
-      }
+      },
     });
   }
+
+  // ─── Timer ────────────────────────────────────────────────────────────────
 
   private startTimer(joinedAt: string): void {
     this.clearTimer();
     const joinedTime = new Date(joinedAt).getTime();
-
     this.timerInterval = setInterval(() => {
-      const now = Date.now();
-      const diff = now - joinedTime;
-
-      if (diff < 0) {
-        this.elapsedTime.set('00:00:00');
-        return;
-      }
-
-      const hrs = Math.floor(diff / 3600000);
+      const diff = Date.now() - joinedTime;
+      if (diff < 0) { this.elapsedTime.set('00:00:00'); return; }
+      const hrs  = Math.floor(diff / 3600000);
       const mins = Math.floor((diff % 3600000) / 60000);
       const secs = Math.floor((diff % 60000) / 1000);
-
       this.elapsedTime.set(
-        [String(hrs).padStart(2, '0'), String(mins).padStart(2, '0'), String(secs).padStart(2, '0')].join(':')
+        [hrs, mins, secs].map((n) => String(n).padStart(2, '0')).join(':')
       );
     }, 1000);
   }
 
   private clearTimer(): void {
-    if (this.timerInterval) {
-      clearInterval(this.timerInterval);
-    }
+    if (this.timerInterval) clearInterval(this.timerInterval);
   }
+
+  // ─── Leave ────────────────────────────────────────────────────────────────
 
   leaveInterview(): void {
     const activeSession = this.session();
@@ -422,12 +427,20 @@ export class InterviewRoom implements OnInit, OnDestroy {
     this.sessionService.endSession(activeSession._id).subscribe({
       next: () => {
         this.clearTimer();
+        this.cleanupWebRTC();
         this.socketService.disconnect();
         this.router.navigate(['/dashboard']);
       },
-      error: () => {
-        this.router.navigate(['/dashboard']);
-      }
+      error: () => this.router.navigate(['/dashboard']),
     });
+  }
+
+  // ─── Trust score color helper ─────────────────────────────────────────────
+
+  get trustScoreColor(): string {
+    const score = this.trustScore();
+    if (score >= 80) return '#22c55e';    // green
+    if (score >= 50) return '#f59e0b';    // amber
+    return '#ef4444';                      // red
   }
 }

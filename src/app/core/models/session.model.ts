@@ -7,6 +7,7 @@ export interface Session {
   joinedAt: string;
   leftAt?: string;
   status: 'waiting' | 'active' | 'completed' | 'left';
+  score: number;
   createdAt?: string;
   updatedAt?: string;
 }

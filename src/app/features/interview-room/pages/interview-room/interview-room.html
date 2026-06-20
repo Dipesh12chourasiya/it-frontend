@@ -1,158 +1,197 @@
-<div class="h-screen flex flex-col bg-zinc-950 text-text-primary overflow-hidden relative">
-  <!-- Hidden remote audio element to ensure audio track plays independently of video container -->
+<div class="h-screen flex flex-col bg-zinc-950 text-white overflow-hidden relative select-none">
+  <!-- Dedicated audio node for remote stream (bypasses browser muted-video autoplay restriction) -->
   <audio [srcObject]="remoteStreamSignal()" autoplay></audio>
 
-  <!-- Loading state -->
+  <!-- ── Loading ───────────────────────────────────────────────────────── -->
   @if (isLoading()) {
-    <div class="flex-grow flex flex-col items-center justify-center space-y-4 bg-bg-base">
+    <div class="flex-grow flex flex-col items-center justify-center space-y-4">
       <div class="spinner"></div>
-      <p class="text-text-secondary animate-pulse text-sm">Synchronizing secure session nodes, sir...</p>
+      <p class="text-zinc-400 animate-pulse text-sm">Initializing secure session, sir...</p>
     </div>
+
   } @else if (errorMessage()) {
-    <div class="flex-grow flex items-center justify-center p-6 bg-bg-base">
-      <div class="card-surface max-w-md w-full text-center space-y-6">
-        <div class="w-14 h-14 bg-danger/10 rounded-full flex items-center justify-center text-danger mx-auto border border-danger/20">
+    <div class="flex-grow flex items-center justify-center p-6">
+      <div class="bg-zinc-900 border border-zinc-700 rounded-2xl max-w-md w-full text-center space-y-6 p-8">
+        <div class="w-14 h-14 bg-red-500/10 rounded-full flex items-center justify-center text-red-400 mx-auto border border-red-500/20">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
         </div>
         <div class="space-y-1">
-          <h3 class="text-xl font-bold">Authentication Refused</h3>
-          <p class="text-text-secondary text-sm">{{ errorMessage() }}</p>
+          <h3 class="text-lg font-bold">Session Error</h3>
+          <p class="text-zinc-400 text-sm">{{ errorMessage() }}</p>
         </div>
-        <button (click)="leaveInterview()" class="btn-secondary w-full">
+        <button (click)="leaveInterview()" class="w-full bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 text-white rounded-xl px-5 py-2.5 text-sm font-semibold transition-colors cursor-pointer">
           Return to Dashboard
         </button>
       </div>
     </div>
+
   } @else {
-    <!-- 1. Header Bar overlay -->
-    <header class="absolute top-0 left-0 right-0 bg-gradient-to-b from-black/70 to-transparent p-6 flex items-center justify-between z-30 pointer-events-none">
-      <div class="flex items-center gap-4 pointer-events-auto">
-        <div class="bg-primary/20 backdrop-blur-md border border-primary/30 text-primary font-black px-3 py-1 rounded-xl text-xs uppercase tracking-wider shadow-lg">
-          LIVE CALL
-        </div>
-        <div class="space-y-0.5">
-          <h2 class="text-base font-bold text-white line-clamp-1 drop-shadow-md">{{ interview()?.title }}</h2>
-          <p class="text-[10px] text-gray-300 font-semibold drop-shadow-sm">Participant: <span class="text-white">{{ currentUser()?.name }}</span></p>
-        </div>
-      </div>
+    <!-- ── Header overlay ─────────────────────────────────────────────── -->
+    <header class="absolute top-0 left-0 right-0 z-30 pointer-events-none">
+      <div class="bg-gradient-to-b from-black/75 via-black/30 to-transparent px-6 py-5 flex items-center justify-between">
 
-      <div class="flex items-center gap-4 pointer-events-auto">
-        <!-- Live Connection Status -->
-        <div class="flex items-center gap-2 px-3.5 py-1.5 bg-black/40 backdrop-blur-md border border-white/10 rounded-full shadow-lg">
-          <span class="h-2 w-2 rounded-full" [ngClass]="connectionStatus() === 'Connected' ? 'bg-success animate-pulse' : 'bg-warning animate-pulse'"></span>
-          <span class="text-[10px] font-bold uppercase tracking-wider text-white">{{ connectionStatus() }}</span>
+        <!-- Left: Session info -->
+        <div class="flex items-center gap-3 pointer-events-auto">
+          <div class="flex items-center gap-1.5 bg-red-600 px-3 py-1 rounded-full shadow-lg">
+            <span class="w-2 h-2 bg-white rounded-full animate-pulse"></span>
+            <span class="text-white text-[10px] font-extrabold uppercase tracking-widest">Live</span>
+          </div>
+          <div>
+            <p class="text-white text-sm font-bold leading-tight line-clamp-1">{{ interview()?.title || 'Interview Room' }}</p>
+            <p class="text-zinc-400 text-[10px] font-medium">{{ currentUser()?.name }}</p>
+          </div>
         </div>
 
-        <!-- Timer Clock -->
-        <div class="bg-black/40 backdrop-blur-md border border-white/10 rounded-full px-4 py-1.5 flex items-center gap-2 font-mono text-white text-xs font-semibold shadow-lg">
-          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-primary animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          <span class="tracking-wider">{{ elapsedTime() }}</span>
+        <!-- Right: Status indicators -->
+        <div class="flex items-center gap-3 pointer-events-auto">
+          <!-- Connection status pill -->
+          <div class="flex items-center gap-1.5 bg-black/50 backdrop-blur-md border border-white/10 rounded-full px-3 py-1">
+            <span class="w-1.5 h-1.5 rounded-full"
+              [ngClass]="connectionStatus() === 'Connected' ? 'bg-green-400 animate-pulse' : 'bg-amber-400 animate-pulse'">
+            </span>
+            <span class="text-[10px] text-white font-semibold uppercase tracking-wider">{{ connectionStatus() }}</span>
+          </div>
+
+          <!-- Timer -->
+          <div class="flex items-center gap-1.5 bg-black/50 backdrop-blur-md border border-white/10 rounded-full px-3 py-1 font-mono">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span class="text-white text-[11px] font-bold tracking-wider">{{ elapsedTime() }}</span>
+          </div>
+
+          <!-- Trust Score -->
+          <div class="flex items-center gap-1.5 bg-black/50 backdrop-blur-md border border-white/10 rounded-full px-3 py-1">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" [style.color]="trustScoreColor" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+            </svg>
+            <span class="text-[11px] font-bold" [style.color]="trustScoreColor">{{ trustScore() }}%</span>
+          </div>
         </div>
       </div>
     </header>
 
-    <!-- 2. Main Viewport Area -->
-    <main class="flex-grow w-full h-full relative bg-zinc-950 flex items-center justify-center">
-      <!-- Remote Stream (Primary Focus) -->
-      <video [srcObject]="remoteStreamSignal()" autoplay playsinline 
-             [class.hidden]="!remoteStreamSignal()" 
-             class="absolute inset-0 w-full h-full object-cover z-0"></video>
+    <!-- ── Main viewport ──────────────────────────────────────────────── -->
+    <main class="flex-grow w-full h-full relative bg-zinc-950">
+      <!-- Remote stream (primary feed, full canvas) -->
+      <video
+        [srcObject]="remoteStreamSignal()"
+        autoplay
+        playsinline
+        class="absolute inset-0 w-full h-full object-cover z-0"
+        [class.hidden]="!remoteStreamSignal()">
+      </video>
 
-      <!-- Remote standby backdrop (when no remote feed is connected) -->
+      <!-- Standby state: waiting for remote peer -->
       @if (!remoteStreamSignal()) {
-        <div class="absolute inset-0 flex flex-col items-center justify-center bg-zinc-900/90 text-center space-y-6 z-10 px-6">
-          <div class="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center text-primary border border-primary/20 shadow-2xl animate-pulse">
-            <svg xmlns="http://www.w3.org/2000/svg" class="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+        <div class="absolute inset-0 flex flex-col items-center justify-center z-10 px-6 text-center">
+          <div class="w-24 h-24 bg-indigo-500/10 rounded-full flex items-center justify-center text-indigo-400 border border-indigo-500/20 shadow-2xl mb-6 animate-pulse">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-12 h-12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
               <path stroke-linecap="round" stroke-linejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
             </svg>
           </div>
-          <div class="max-w-md space-y-2">
-            <h3 class="text-lg font-bold text-white">Waiting for participant connection</h3>
-            <p class="text-zinc-400 text-xs leading-relaxed">
-              Once the other participant enters the room, the video feed and secure tunnel will initialize automatically, sir.
-            </p>
-          </div>
+          <h3 class="text-white text-lg font-bold mb-1">Waiting for other participant</h3>
+          <p class="text-zinc-500 text-xs max-w-xs leading-relaxed">
+            The video feed will connect automatically once the recruiter or interviewer joins this room, sir.
+          </p>
         </div>
       }
 
-      <!-- Local Video Overlay (floating Picture-in-Picture) -->
+      <!-- Local PiP overlay -->
       @if (localStreamSignal()) {
-        <div class="absolute bottom-28 right-6 w-40 sm:w-56 aspect-video rounded-2xl overflow-hidden border border-white/10 shadow-2xl z-20 bg-zinc-900 group">
+        <div class="absolute bottom-28 right-5 z-20 w-44 sm:w-52 aspect-video rounded-2xl overflow-hidden border border-white/10 shadow-2xl bg-zinc-900">
           @if (!isCameraOff()) {
-            <video [srcObject]="localStreamSignal()" autoplay [muted]="true" playsinline class="w-full h-full object-cover scale-x-[-1]"></video>
+            <video [srcObject]="localStreamSignal()" autoplay [muted]="true" playsinline
+                   class="w-full h-full object-cover scale-x-[-1]">
+            </video>
           } @else {
-            <div class="w-full h-full flex flex-col items-center justify-center text-zinc-400 bg-zinc-800">
-              <svg xmlns="http://www.w3.org/2000/svg" class="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+            <div class="w-full h-full flex flex-col items-center justify-center bg-zinc-800 text-zinc-500">
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-8 h-8 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
               </svg>
-              <span class="text-[9px] mt-1.5 font-bold uppercase tracking-widest text-zinc-500">Camera Off</span>
+              <span class="text-[9px] font-bold uppercase tracking-widest">Camera Off</span>
             </div>
           }
-          <div class="absolute bottom-2 left-2 bg-black/60 px-2 py-0.5 rounded text-[8px] font-bold text-white uppercase tracking-wider pointer-events-none">
+          <div class="absolute bottom-1.5 left-2 bg-black/60 px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider">
             You
           </div>
         </div>
       }
     </main>
 
-    <!-- 3. Floating Control Bar -->
-    <footer class="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center justify-center z-30 w-full px-6 pointer-events-none">
-      <div class="flex items-center gap-6 bg-zinc-900/85 backdrop-blur-lg border border-white/10 rounded-full px-8 py-4 shadow-2xl pointer-events-auto">
-        <!-- Mic Toggle Button -->
-        <button (click)="toggleMute()" 
-                [class]="isMuted() ? 'bg-red-600 hover:bg-red-700 text-white' : 'bg-zinc-800 hover:bg-zinc-750 text-white'"
-                class="w-12 h-12 rounded-full flex items-center justify-center transition-all shadow-md active:scale-95 cursor-pointer"
-                [title]="isMuted() ? 'Unmute microphone' : 'Mute microphone'">
+    <!-- ── Floating Control Bar ───────────────────────────────────────── -->
+    <footer class="absolute bottom-6 inset-x-0 flex justify-center z-30 px-4 pointer-events-none">
+      <div class="flex items-center gap-4 bg-zinc-900/90 backdrop-blur-xl border border-white/10 rounded-full px-7 py-3.5 shadow-2xl pointer-events-auto">
+
+        <!-- Mic toggle -->
+        <button (click)="toggleMute()"
+          [class]="isMuted() ? 'bg-red-600 hover:bg-red-700' : 'bg-zinc-700 hover:bg-zinc-600'"
+          class="w-12 h-12 rounded-full flex flex-col items-center justify-center gap-0.5 transition-all active:scale-95 cursor-pointer group"
+          [title]="isMuted() ? 'Unmute' : 'Mute'">
           @if (isMuted()) {
-            <svg xmlns="http://www.w3.org/2000/svg" class="w-5.5 h-5.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
               <path stroke-linecap="round" stroke-linejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
-              <line x1="2" y1="2" x2="22" y2="22" stroke="currentColor" stroke-width="2" />
+              <line x1="3" y1="3" x2="21" y2="21" stroke="currentColor" stroke-width="2" />
             </svg>
           } @else {
-            <svg xmlns="http://www.w3.org/2000/svg" class="w-5.5 h-5.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
               <path stroke-linecap="round" stroke-linejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
             </svg>
           }
         </button>
 
-        <!-- Camera Toggle Button -->
-        <button (click)="toggleCamera()" 
-                [class]="isCameraOff() ? 'bg-red-600 hover:bg-red-700 text-white' : 'bg-zinc-800 hover:bg-zinc-750 text-white'"
-                class="w-12 h-12 rounded-full flex items-center justify-center transition-all shadow-md active:scale-95 cursor-pointer"
-                [title]="isCameraOff() ? 'Turn camera on' : 'Turn camera off'">
+        <!-- Camera toggle -->
+        <button (click)="toggleCamera()"
+          [class]="isCameraOff() ? 'bg-red-600 hover:bg-red-700' : 'bg-zinc-700 hover:bg-zinc-600'"
+          class="w-12 h-12 rounded-full flex items-center justify-center transition-all active:scale-95 cursor-pointer"
+          [title]="isCameraOff() ? 'Turn camera on' : 'Turn camera off'">
           @if (isCameraOff()) {
-            <svg xmlns="http://www.w3.org/2000/svg" class="w-5.5 h-5.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
               <path stroke-linecap="round" stroke-linejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
             </svg>
           } @else {
-            <svg xmlns="http://www.w3.org/2000/svg" class="w-5.5 h-5.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
               <path stroke-linecap="round" stroke-linejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
             </svg>
           }
         </button>
 
-        <!-- Screen Share Button (UI Only) -->
-        <button (click)="onScreenShareClick()" 
-                class="w-12 h-12 rounded-full flex items-center justify-center bg-zinc-800 hover:bg-zinc-750 text-white transition-all shadow-md active:scale-95 cursor-pointer"
-                title="Share screen (UI only)">
-          <svg xmlns="http://www.w3.org/2000/svg" class="w-5.5 h-5.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <!-- Fullscreen toggle -->
+        <button (click)="toggleFullscreen()"
+          [class]="isFullscreen() ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-zinc-700 hover:bg-zinc-600'"
+          class="w-12 h-12 rounded-full flex items-center justify-center transition-all active:scale-95 cursor-pointer"
+          [title]="isFullscreen() ? 'Exit fullscreen' : 'Enter fullscreen'">
+          @if (isFullscreen()) {
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 9V4.5M9 9H4.5M9 9L3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5m0-4.5l5.25 5.25" />
+            </svg>
+          } @else {
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+            </svg>
+          }
+        </button>
+
+        <!-- Screen share (UI placeholder) -->
+        <button (click)="onScreenShareClick()"
+          class="w-12 h-12 rounded-full flex items-center justify-center bg-zinc-700 hover:bg-zinc-600 transition-all active:scale-95 cursor-pointer"
+          title="Share screen">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
           </svg>
         </button>
 
-        <!-- Vertical Divider -->
-        <div class="w-px h-8 bg-white/10 mx-1"></div>
+        <!-- Divider -->
+        <div class="w-px h-8 bg-white/10"></div>
 
-        <!-- Leave Call Button -->
-        <button (click)="leaveInterview()" 
-                class="w-12 h-12 rounded-full flex items-center justify-center bg-red-600 hover:bg-red-700 text-white transition-all shadow-md hover:shadow-red-500/20 active:scale-95 cursor-pointer"
-                title="Leave Call">
-          <svg xmlns="http://www.w3.org/2000/svg" class="w-5.5 h-5.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3 3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+        <!-- Leave -->
+        <button (click)="leaveInterview()"
+          class="w-12 h-12 rounded-full flex items-center justify-center bg-red-600 hover:bg-red-700 transition-all active:scale-95 cursor-pointer shadow-lg hover:shadow-red-500/30"
+          title="Leave interview">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M16 17l5-5m0 0l-5-5m5 5H9M13 7a4 4 0 11-8 0 4 4 0 018 0zM13 17a4 4 0 11-8 0 4 4 0 018 0z" />
           </svg>
         </button>
       </div>
