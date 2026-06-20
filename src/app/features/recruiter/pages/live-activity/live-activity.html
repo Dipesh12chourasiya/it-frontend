@@ -78,9 +78,14 @@
             {{ eventCount() }} events
           </span>
         </div>
-        <button (click)="clearEvents()" class="text-[10px] text-text-muted hover:text-danger font-semibold uppercase tracking-wider transition-colors cursor-pointer">
-          Clear
-        </button>
+        <div class="flex items-center gap-4">
+          <a [routerLink]="['/interview-room', selectedInterviewId()]" class="text-[10px] text-primary hover:text-primary-hover font-semibold uppercase tracking-wider transition-colors cursor-pointer">
+            Join Interview Room
+          </a>
+          <button (click)="clearEvents()" class="text-[10px] text-text-muted hover:text-danger font-semibold uppercase tracking-wider transition-colors cursor-pointer">
+            Clear
+          </button>
+        </div>
       </div>
 
       <!-- Events List -->
