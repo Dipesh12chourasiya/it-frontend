@@ -1,28 +1,48 @@
-import { Component, OnInit, OnDestroy, signal, inject } from '@angular/core';
+import { Component, OnInit, OnDestroy, signal, inject, ViewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { SessionService } from '../../../../core/services/session.service';
 import { AuthService } from '../../../../core/services/auth.service';
 import { MonitoringService } from '../../../../core/services/monitoring.service';
 import { SocketService } from '../../../../core/services/socket.service';
+import { WorkspaceService, WorkspaceData } from '../../../../core/services/workspace.service';
 import { Session } from '../../../../core/models/session.model';
 import { Interview } from '../../../../core/models/interview.model';
+import { CodeEditor } from '../../components/code-editor/code-editor';
+import { Whiteboard } from '../../components/whiteboard/whiteboard';
+
+const SPLIT_RATIO_KEY = 'ig_split_ratio';
+
+export interface Participant {
+  id: string;
+  name: string;
+  role: string;
+  stream: MediaStream | null;
+  isMuted: boolean;
+  isCameraOff: boolean;
+  isLocal: boolean;
+}
 
 @Component({
   selector: 'app-interview-room',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, CodeEditor, Whiteboard],
   templateUrl: './interview-room.html',
+  styleUrl: './interview-room.css',
 })
 export class InterviewRoom implements OnInit, OnDestroy {
+  @ViewChild(CodeEditor) codeEditor!: CodeEditor;
+  @ViewChild(Whiteboard) whiteboard!: Whiteboard;
+
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly sessionService = inject(SessionService);
   private readonly authService = inject(AuthService);
   private readonly monitoringService = inject(MonitoringService);
   private readonly socketService = inject(SocketService);
+  private readonly workspaceService = inject(WorkspaceService);
 
-  // Core signals
+  // ─── Core signals ──────────────────────────────────────────────────────
   readonly isLoading = signal<boolean>(true);
   readonly errorMessage = signal<string | null>(null);
   readonly session = signal<Session | null>(null);
@@ -31,12 +51,24 @@ export class InterviewRoom implements OnInit, OnDestroy {
   readonly connectionStatus = signal<string>('Connecting...');
   readonly trustScore = signal<number>(100);
 
-  // WebRTC signals
+  // ─── Participant signals ───────────────────────────────────────────────
+  readonly participants = signal<Participant[]>([]);
+
+  // ─── WebRTC signals ────────────────────────────────────────────────────
   readonly localStreamSignal = signal<MediaStream | null>(null);
   readonly remoteStreamSignal = signal<MediaStream | null>(null);
   readonly isMuted = signal<boolean>(false);
   readonly isCameraOff = signal<boolean>(false);
   readonly isFullscreen = signal<boolean>(false);
+
+  // ─── Workspace signals ─────────────────────────────────────────────────
+  readonly workspaceLanguage = signal<string>('javascript');
+  readonly workspaceCode = signal<string>('');
+  readonly isSaving = signal<boolean>(false);
+
+  // ─── Split panel ───────────────────────────────────────────────────────
+  splitRatio = 50;
+  private isDraggingDivider = false;
 
   readonly currentUser = this.authService.currentUser;
 
@@ -46,7 +78,12 @@ export class InterviewRoom implements OnInit, OnDestroy {
   private peerConnection: RTCPeerConnection | null = null;
   private iceCandidatesQueue: RTCIceCandidateInit[] = [];
 
-  // Fullscreen change listener reference for cleanup
+  // Auto-save
+  private autoSaveInterval: any = null;
+  private pendingCodeSave: string | null = null;
+  private pendingWhiteboardSave: Record<string, any> | null = null;
+  private readonly AUTO_SAVE_DEBOUNCE_MS = 3000;
+
   private fullscreenChangeHandler = () => {
     this.isFullscreen.set(!!document.fullscreenElement);
   };
@@ -54,29 +91,41 @@ export class InterviewRoom implements OnInit, OnDestroy {
   ngOnInit(): void {
     const interviewId = this.route.snapshot.paramMap.get('interviewId');
     if (!interviewId) {
-      this.errorMessage.set('Invalid request. No Interview ID specified, sir.');
+      this.errorMessage.set('Invalid request. No Interview ID specified.');
       this.isLoading.set(false);
       return;
     }
     this.currentInterviewId = interviewId;
+
+    const saved = localStorage.getItem(SPLIT_RATIO_KEY);
+    if (saved) {
+      const val = parseFloat(saved);
+      if (!isNaN(val) && val >= 20 && val <= 80) {
+        this.splitRatio = val;
+      }
+    }
+
     document.addEventListener('fullscreenchange', this.fullscreenChangeHandler);
     this.startInterviewSession(interviewId);
   }
 
   ngOnDestroy(): void {
     this.clearTimer();
+    this.stopAutoSave();
     this.monitoringService.stopMonitoring();
     this.cleanupWebRTC();
 
     document.removeEventListener('fullscreenchange', this.fullscreenChangeHandler);
+    document.removeEventListener('mousemove', this.onDividerMouseMove);
+    document.removeEventListener('mouseup', this.onDividerMouseUp);
 
-    // Exit fullscreen if still active
     if (document.fullscreenElement) {
       document.exitFullscreen().catch(() => {});
     }
 
     if (this.currentInterviewId) {
       this.socketService.leaveInterview(this.currentInterviewId);
+      this.socketService.emit('workspace-leave', this.currentInterviewId);
     }
 
     this.socketService.off('trust-score-updated');
@@ -85,11 +134,107 @@ export class InterviewRoom implements OnInit, OnDestroy {
     this.socketService.off('webrtc-offer');
     this.socketService.off('webrtc-answer');
     this.socketService.off('webrtc-ice-candidate');
+    this.socketService.off('workspace-sync');
+    this.socketService.off('code-change');
+    this.socketService.off('whiteboard-change');
     this.socketService.off('connect');
     this.socketService.disconnect();
   }
 
-  // ─── Media ───────────────────────────────────────────────────────────────
+  // ─── Participant Management ────────────────────────────────────────────
+
+  private addLocalParticipant(): void {
+    const user = this.currentUser();
+    if (!user) return;
+
+    const p: Participant = {
+      id: user._id,
+      name: user.name,
+      role: user.role,
+      stream: this.localStreamSignal(),
+      isMuted: false,
+      isCameraOff: false,
+      isLocal: true,
+    };
+    this.participants.update(list => [...list.filter(x => !x.isLocal), p]);
+  }
+
+  private addRemoteParticipant(name: string, role: string): void {
+    // Check if this remote participant already exists to avoid duplicates
+    const existing = this.participants().find(p => !p.isLocal && p.name === name);
+    if (existing) return;
+
+    const p: Participant = {
+      id: `remote-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      name,
+      role,
+      stream: this.remoteStreamSignal(),
+      isMuted: false,
+      isCameraOff: false,
+      isLocal: false,
+    };
+    this.participants.update(list => [...list, p]);
+  }
+
+  private updateLocalParticipantStream(): void {
+    this.participants.update(list =>
+      list.map(p => p.isLocal ? { ...p, stream: this.localStreamSignal() } : p)
+    );
+  }
+
+  private updateLocalParticipantMute(): void {
+    this.participants.update(list =>
+      list.map(p => p.isLocal ? { ...p, isMuted: this.isMuted() } : p)
+    );
+  }
+
+  private updateLocalParticipantCamera(): void {
+    this.participants.update(list =>
+      list.map(p => p.isLocal ? { ...p, isCameraOff: this.isCameraOff() } : p)
+    );
+  }
+
+  private updateRemoteParticipantStream(): void {
+    this.participants.update(list =>
+      list.map(p => !p.isLocal ? { ...p, stream: this.remoteStreamSignal() } : p)
+    );
+  }
+
+  private removeRemoteParticipant(name?: string): void {
+    if (name) {
+      this.participants.update(list => list.filter(p => p.isLocal || p.name !== name));
+    } else {
+      this.participants.update(list => list.filter(p => p.isLocal));
+    }
+  }
+
+  // ─── Split Panel Drag ──────────────────────────────────────────────────
+
+  onDividerMouseDown(event: MouseEvent): void {
+    event.preventDefault();
+    this.isDraggingDivider = true;
+    document.addEventListener('mousemove', this.onDividerMouseMove);
+    document.addEventListener('mouseup', this.onDividerMouseUp);
+  }
+
+  private onDividerMouseMove = (e: MouseEvent): void => {
+    if (!this.isDraggingDivider) return;
+    const workspaceEl = document.querySelector('.workspace-area') as HTMLElement;
+    if (!workspaceEl) return;
+    const rect = workspaceEl.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const pct = (x / rect.width) * 100;
+    this.splitRatio = Math.min(80, Math.max(20, pct));
+  };
+
+  private onDividerMouseUp = (): void => {
+    this.isDraggingDivider = false;
+    document.removeEventListener('mousemove', this.onDividerMouseMove);
+    document.removeEventListener('mouseup', this.onDividerMouseUp);
+    localStorage.setItem(SPLIT_RATIO_KEY, String(this.splitRatio));
+  };
+
+  // ─── Media ─────────────────────────────────────────────────────────────
 
   private async setupLocalMedia(): Promise<void> {
     try {
@@ -98,40 +243,50 @@ export class InterviewRoom implements OnInit, OnDestroy {
         audio: true,
       });
       this.localStreamSignal.set(this.localStream);
+      this.addLocalParticipant();
+      this.setupLocalStreamWatchers();
     } catch (err) {
       console.error('[WebRTC] Camera/Microphone access failed:', err);
       this.errorMessage.set(
-        'Access to camera or microphone was denied, sir. Please grant permissions and reload.'
+        'Access to camera or microphone was denied. Please grant permissions and reload.'
       );
     }
   }
 
-  // ─── WebRTC signaling ─────────────────────────────────────────────────────
+  private setupLocalStreamWatchers(): void {
+    this.localStreamSignal.set(this.localStream);
+  }
+
+  // ─── WebRTC signaling ──────────────────────────────────────────────────
 
   private setupSignalingListeners(): void {
-    this.socketService.listen('peer-joined', () => {
-      console.log('[WebRTC] Peer joined. Initiating call...');
+    this.socketService.listen<{ userName: string; role: string }>('peer-joined', (data) => {
+      console.log(`[WebRTC] Peer joined: ${data.userName} (${data.role}). Initiating call...`);
+      this.addRemoteParticipant(data.userName || 'Participant', data.role || 'candidate');
       this.initiateCall();
     });
 
-    this.socketService.listen('peer-left', () => {
-      console.log('[WebRTC] Peer left.');
+    this.socketService.listen<{ userName?: string }>('peer-left', (data) => {
+      console.log(`[WebRTC] Peer left: ${data?.userName}`);
+      this.removeRemoteParticipant(data?.userName);
       this.remoteStreamSignal.set(null);
       this.peerConnection?.close();
       this.peerConnection = null;
       this.iceCandidatesQueue = [];
     });
 
-    this.socketService.listen<{ offer: RTCSessionDescriptionInit }>(
+    this.socketService.listen<{ offer: RTCSessionDescriptionInit; senderId: string; userName?: string; role?: string }>(
       'webrtc-offer',
       async (data) => {
-        await this.handleOffer(data.offer);
+        console.log(`[WebRTC] Offer received from: ${data.userName} (${data.role})`);
+        await this.handleOffer(data.offer, data.userName, data.role);
       }
     );
 
     this.socketService.listen<{ answer: RTCSessionDescriptionInit }>(
       'webrtc-answer',
       async (data) => {
+        console.log('[WebRTC] Answer received');
         await this.handleAnswer(data.answer);
       }
     );
@@ -139,12 +294,14 @@ export class InterviewRoom implements OnInit, OnDestroy {
     this.socketService.listen<{ candidate: RTCIceCandidateInit }>(
       'webrtc-ice-candidate',
       async (data) => {
+        console.log('[WebRTC] ICE candidate received');
         await this.handleIceCandidate(data.candidate);
       }
     );
   }
 
   private createPeerConnection(): RTCPeerConnection {
+    console.log('[WebRTC] Creating new PeerConnection');
     const pc = new RTCPeerConnection({
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
@@ -153,24 +310,25 @@ export class InterviewRoom implements OnInit, OnDestroy {
     });
 
     if (this.localStream) {
-      console.log(
-        '[WebRTC] Adding local tracks:',
-        this.localStream.getTracks().map((t) => t.kind)
-      );
-      this.localStream.getTracks().forEach((track) => {
+      const tracks = this.localStream.getTracks();
+      console.log(`[WebRTC] Adding ${tracks.length} local tracks:`, tracks.map(t => t.kind));
+      tracks.forEach((track) => {
         pc.addTrack(track, this.localStream!);
       });
+    } else {
+      console.warn('[WebRTC] No local stream available when creating peer connection');
     }
 
     pc.ontrack = (event) => {
-      console.log('[WebRTC] Remote track received:', event.track.kind);
-
+      console.log(`[WebRTC] Track received: ${event.track.kind} (${event.track.id})`);
       let remoteStream = this.remoteStreamSignal();
       if (!remoteStream) remoteStream = new MediaStream();
-
       if (!remoteStream.getTracks().find((t) => t.id === event.track.id)) {
         remoteStream.addTrack(event.track);
-        this.remoteStreamSignal.set(new MediaStream(remoteStream.getTracks()));
+        const newStream = new MediaStream(remoteStream.getTracks());
+        this.remoteStreamSignal.set(newStream);
+        this.updateRemoteParticipantStream();
+        console.log(`[WebRTC] Remote stream now has ${newStream.getTracks().length} tracks`);
       }
     };
 
@@ -184,9 +342,9 @@ export class InterviewRoom implements OnInit, OnDestroy {
     };
 
     pc.onconnectionstatechange = () => {
-      console.log('[WebRTC] Connection state:', pc.connectionState);
       if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
         this.remoteStreamSignal.set(null);
+        this.updateRemoteParticipantStream();
       }
     };
 
@@ -195,33 +353,50 @@ export class InterviewRoom implements OnInit, OnDestroy {
   }
 
   private async initiateCall(): Promise<void> {
+    console.log('[WebRTC] Initiating call...');
     const pc = this.createPeerConnection();
     try {
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
+      console.log('[WebRTC] Offer created and local description set');
       if (this.currentInterviewId) {
         this.socketService.emit('webrtc-offer', {
           interviewId: this.currentInterviewId,
           offer,
         });
+        console.log('[WebRTC] Offer sent');
       }
     } catch (err) {
       console.error('[WebRTC] Failed to create offer:', err);
     }
   }
 
-  private async handleOffer(offer: RTCSessionDescriptionInit): Promise<void> {
+  private async handleOffer(offer: RTCSessionDescriptionInit, senderName?: string, senderRole?: string): Promise<void> {
+    console.log(`[WebRTC] Handling offer from: ${senderName} (${senderRole})`);
     this.peerConnection?.close();
     const pc = this.createPeerConnection();
+
+    // Add remote participant if not already present
+    if (senderName) {
+      const existing = this.participants().find(p => !p.isLocal && p.name === senderName);
+      if (!existing) {
+        console.log(`[WebRTC] Adding remote participant: ${senderName}`);
+        this.addRemoteParticipant(senderName, senderRole || 'candidate');
+      }
+    }
+
     try {
       await pc.setRemoteDescription(new RTCSessionDescription(offer));
+      console.log('[WebRTC] Remote description set successfully');
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
+      console.log('[WebRTC] Answer created and local description set');
       if (this.currentInterviewId) {
         this.socketService.emit('webrtc-answer', {
           interviewId: this.currentInterviewId,
           answer,
         });
+        console.log('[WebRTC] Answer sent');
       }
       await this.processIceCandidatesQueue();
     } catch (err) {
@@ -273,15 +448,17 @@ export class InterviewRoom implements OnInit, OnDestroy {
     this.peerConnection = null;
     this.remoteStreamSignal.set(null);
     this.iceCandidatesQueue = [];
+    this.participants.set([]);
   }
 
-  // ─── Controls ─────────────────────────────────────────────────────────────
+  // ─── Controls ──────────────────────────────────────────────────────────
 
   toggleMute(): void {
     if (!this.localStream) return;
     const tracks = this.localStream.getAudioTracks();
     tracks.forEach((t) => (t.enabled = !t.enabled));
     this.isMuted.set(!tracks[0]?.enabled);
+    this.updateLocalParticipantMute();
   }
 
   toggleCamera(): void {
@@ -289,34 +466,152 @@ export class InterviewRoom implements OnInit, OnDestroy {
     const tracks = this.localStream.getVideoTracks();
     tracks.forEach((t) => (t.enabled = !t.enabled));
     this.isCameraOff.set(!tracks[0]?.enabled);
+    this.updateLocalParticipantCamera();
   }
 
   async toggleFullscreen(): Promise<void> {
     if (!document.fullscreenElement) {
-      const el = document.documentElement;
       try {
-        await el.requestFullscreen();
+        await document.documentElement.requestFullscreen();
         this.isFullscreen.set(true);
       } catch (err) {
-        console.error('[Fullscreen] Failed to enter fullscreen, sir:', err);
+        console.error('[Fullscreen] Failed:', err);
       }
     } else {
       try {
         await document.exitFullscreen();
         this.isFullscreen.set(false);
-        // FULLSCREEN_EXIT is also fired by the browser's fullscreenchange event
-        // which MonitoringService handles. We don't duplicate-report here.
       } catch (err) {
-        console.error('[Fullscreen] Failed to exit fullscreen, sir:', err);
+        console.error('[Fullscreen] Failed:', err);
       }
     }
   }
 
-  onScreenShareClick(): void {
-    console.log('[UI] Screen share clicked — implementation pending, sir.');
+  // ─── Workspace ─────────────────────────────────────────────────────────
+
+  private setupWorkspaceListeners(): void {
+    this.socketService.listen<WorkspaceData & { interviewId: string }>(
+      'workspace-sync',
+      (data) => {
+        this.workspaceLanguage.set(data.language);
+        this.workspaceCode.set(data.code);
+        if (this.codeEditor) {
+          this.codeEditor.updateCode(data.code);
+        }
+        if (this.whiteboard && data.whiteboardData) {
+          this.whiteboard.updateFromExternal(data.whiteboardData);
+        }
+      }
+    );
+
+    this.socketService.listen<{ interviewId: string; code: string; language: string; userId: string }>(
+      'code-change',
+      (data) => {
+        if (data.userId === this.currentUser()?._id) return;
+        this.workspaceCode.set(data.code);
+        this.workspaceLanguage.set(data.language);
+        if (this.codeEditor) {
+          this.codeEditor.updateCode(data.code);
+        }
+      }
+    );
+
+    this.socketService.listen<{ interviewId: string; whiteboardData: any; userId: string }>(
+      'whiteboard-change',
+      (data) => {
+        if (data.userId === this.currentUser()?._id) return;
+        if (this.whiteboard) {
+          this.whiteboard.updateFromExternal(data.whiteboardData);
+        }
+      }
+    );
   }
 
-  // ─── Session initialization ───────────────────────────────────────────────
+  private joinWorkspace(): void {
+    if (!this.currentInterviewId) return;
+    this.socketService.emit('workspace-join', this.currentInterviewId);
+    this.setupWorkspaceListeners();
+    this.startAutoSave();
+  }
+
+  onCodeChange(code: string): void {
+    this.workspaceCode.set(code);
+    if (this.currentInterviewId) {
+      this.socketService.emit('code-change', {
+        interviewId: this.currentInterviewId,
+        code,
+        language: this.workspaceLanguage(),
+      });
+    }
+    this.pendingCodeSave = code;
+  }
+
+  onLanguageChange(language: string): void {
+    this.workspaceLanguage.set(language);
+    if (this.currentInterviewId) {
+      this.socketService.emit('code-change', {
+        interviewId: this.currentInterviewId,
+        code: this.workspaceCode(),
+        language,
+      });
+    }
+  }
+
+  onWhiteboardChange(data: Record<string, any>): void {
+    if (this.currentInterviewId) {
+      this.socketService.emit('whiteboard-change', {
+        interviewId: this.currentInterviewId,
+        whiteboardData: data,
+      });
+    }
+    this.pendingWhiteboardSave = data;
+  }
+
+  // ─── Auto-save ─────────────────────────────────────────────────────────
+
+  private startAutoSave(): void {
+    this.autoSaveInterval = setInterval(() => {
+      this.flushAutoSave();
+    }, this.AUTO_SAVE_DEBOUNCE_MS);
+  }
+
+  private stopAutoSave(): void {
+    if (this.autoSaveInterval) {
+      clearInterval(this.autoSaveInterval);
+      this.autoSaveInterval = null;
+    }
+    this.flushAutoSave();
+  }
+
+  private flushAutoSave(): void {
+    if (!this.currentInterviewId) return;
+
+    const hasCodeChange = this.pendingCodeSave !== null;
+    const hasWhiteboardChange = this.pendingWhiteboardSave !== null;
+    if (!hasCodeChange && !hasWhiteboardChange) return;
+
+    this.isSaving.set(true);
+
+    const payload: { code?: string; language?: string; whiteboardData?: Record<string, any> } = {};
+    if (hasCodeChange) {
+      payload.code = this.pendingCodeSave!;
+      payload.language = this.workspaceLanguage();
+      this.pendingCodeSave = null;
+    }
+    if (hasWhiteboardChange) {
+      payload.whiteboardData = this.pendingWhiteboardSave!;
+      this.pendingWhiteboardSave = null;
+    }
+
+    this.socketService.emit('workspace-save', {
+      interviewId: this.currentInterviewId,
+      ...payload,
+    });
+
+    setTimeout(() => this.isSaving.set(false), 500);
+  }
+
+  // ─── Session initialization ────────────────────────────────────────────
 
   private startInterviewSession(interviewId: string): void {
     this.sessionService.startSession(interviewId).subscribe({
@@ -330,32 +625,28 @@ export class InterviewRoom implements OnInit, OnDestroy {
               this.interview.set(sessionData.interviewId as Interview);
             }
 
-            // Initialise trust score from persisted session value
             if (typeof sessionData.score === 'number') {
               this.trustScore.set(sessionData.score);
             }
 
             this.startTimer(sessionData.joinedAt);
 
-            // Start monitoring engine
             const candidateId = this.currentUser()?._id;
             if (candidateId) {
               this.monitoringService.startMonitoring(interviewId, candidateId);
             }
 
-            // Setup WebRTC media
             await this.setupLocalMedia();
 
-            // Connect socket + join room
             this.socketService.connect();
             this.setupSignalingListeners();
 
             this.socketService.listen('connect', () => {
               this.connectionStatus.set('Connected');
               this.socketService.joinInterview(interviewId);
+              this.joinWorkspace();
             });
 
-            // Listen for live trust-score updates
             this.socketService.listen<{ candidateId: string; score: number; eventType: string }>(
               'trust-score-updated',
               (data) => {
@@ -368,6 +659,7 @@ export class InterviewRoom implements OnInit, OnDestroy {
             if (this.socketService.isConnected()) {
               this.connectionStatus.set('Connected');
               this.socketService.joinInterview(interviewId);
+              this.joinWorkspace();
             }
 
             this.isLoading.set(false);
@@ -387,7 +679,7 @@ export class InterviewRoom implements OnInit, OnDestroy {
     });
   }
 
-  // ─── Timer ────────────────────────────────────────────────────────────────
+  // ─── Timer ─────────────────────────────────────────────────────────────
 
   private startTimer(joinedAt: string): void {
     this.clearTimer();
@@ -395,7 +687,7 @@ export class InterviewRoom implements OnInit, OnDestroy {
     this.timerInterval = setInterval(() => {
       const diff = Date.now() - joinedTime;
       if (diff < 0) { this.elapsedTime.set('00:00:00'); return; }
-      const hrs  = Math.floor(diff / 3600000);
+      const hrs = Math.floor(diff / 3600000);
       const mins = Math.floor((diff % 3600000) / 60000);
       const secs = Math.floor((diff % 60000) / 1000);
       this.elapsedTime.set(
@@ -408,7 +700,7 @@ export class InterviewRoom implements OnInit, OnDestroy {
     if (this.timerInterval) clearInterval(this.timerInterval);
   }
 
-  // ─── Leave ────────────────────────────────────────────────────────────────
+  // ─── Leave ─────────────────────────────────────────────────────────────
 
   leaveInterview(): void {
     const activeSession = this.session();
@@ -418,10 +710,12 @@ export class InterviewRoom implements OnInit, OnDestroy {
     }
 
     this.isLoading.set(true);
+    this.stopAutoSave();
     this.monitoringService.stopMonitoring();
 
     if (this.currentInterviewId) {
       this.socketService.leaveInterview(this.currentInterviewId);
+      this.socketService.emit('workspace-leave', this.currentInterviewId);
     }
 
     this.sessionService.endSession(activeSession._id).subscribe({
@@ -435,12 +729,14 @@ export class InterviewRoom implements OnInit, OnDestroy {
     });
   }
 
-  // ─── Trust score color helper ─────────────────────────────────────────────
-
   get trustScoreColor(): string {
     const score = this.trustScore();
-    if (score >= 80) return '#22c55e';    // green
-    if (score >= 50) return '#f59e0b';    // amber
-    return '#ef4444';                      // red
+    if (score >= 80) return '#22c55e';
+    if (score >= 50) return '#f59e0b';
+    return '#ef4444';
+  }
+
+  getParticipantInitials(name: string): string {
+    return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
   }
 }

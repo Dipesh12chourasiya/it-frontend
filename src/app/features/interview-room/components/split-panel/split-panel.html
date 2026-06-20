@@ -1,0 +1,12 @@
+<!-- Divider only - parent handles panel layout -->
+<div
+  #divider
+  class="split-divider"
+  [class.active]="isDragging"
+  (mousedown)="onDividerMouseDown($event)">
+  <div class="grip">
+    <div class="dot"></div>
+    <div class="dot"></div>
+    <div class="dot"></div>
+  </div>
+</div>

@@ -1,0 +1,79 @@
+<div class="whiteboard-container">
+  <!-- Toolbar -->
+  <div class="whiteboard-toolbar">
+    <!-- Tools -->
+    <div class="toolbar-group">
+      @for (tool of tools; track tool.id) {
+        <button
+          (click)="selectTool(tool.id)"
+          class="toolbar-btn"
+          [class.active]="currentTool === tool.id"
+          [title]="tool.label">
+          {{ tool.icon }}
+        </button>
+      }
+    </div>
+
+    <div class="toolbar-divider"></div>
+
+    <!-- Colors -->
+    <div class="toolbar-group">
+      @for (color of colors; track color) {
+        <button
+          (click)="selectColor(color)"
+          class="color-btn"
+          [class.active]="currentColor === color"
+          [style.background]="color">
+        </button>
+      }
+    </div>
+
+    <div class="toolbar-divider"></div>
+
+    <!-- Sizes -->
+    <div class="toolbar-group">
+      @for (size of sizes; track size) {
+        <button
+          (click)="selectSize(size)"
+          class="toolbar-btn"
+          [class.active]="currentSize === size">
+          <div class="size-dot" [style.width.px]="size + 2" [style.height.px]="size + 2"></div>
+        </button>
+      }
+    </div>
+
+    <div class="toolbar-divider"></div>
+
+    <!-- Actions -->
+    <div class="toolbar-group">
+      <button (click)="undo()" class="toolbar-btn" title="Undo">↩</button>
+      <button (click)="redo()" class="toolbar-btn" title="Redo">↪</button>
+      <button (click)="clearCanvas()" class="toolbar-btn danger" title="Clear All">🗑</button>
+    </div>
+  </div>
+
+  <!-- Canvas -->
+  <div class="canvas-wrapper">
+    <canvas #canvas class="drawing-canvas"></canvas>
+
+    <!-- Text Input Overlay -->
+    @if (showTextInput) {
+      <div class="text-input-overlay"
+           [style.left.px]="textInputX"
+           [style.top.px]="textInputY">
+        <input
+          type="text"
+          [(ngModel)]="textInputValue"
+          (keydown.enter)="addText()"
+          (keydown.escape)="showTextInput = false"
+          class="text-input"
+          placeholder="Type text..."
+          autofocus />
+        <div class="text-input-actions">
+          <button (click)="addText()" class="text-action-btn primary">Add</button>
+          <button (click)="showTextInput = false" class="text-action-btn">Cancel</button>
+        </div>
+      </div>
+    }
+  </div>
+</div>

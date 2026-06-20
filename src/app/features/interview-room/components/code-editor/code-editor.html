@@ -1,0 +1,17 @@
+<div class="flex flex-col h-full bg-zinc-950">
+  <!-- Language Selector Bar -->
+  <div class="flex items-center gap-3 px-4 py-2 bg-zinc-900 border-b border-zinc-800">
+    <span class="text-[10px] text-zinc-500 font-semibold uppercase tracking-widest">Language</span>
+    <select
+      [ngModel]="selectedLanguage"
+      (ngModelChange)="onLanguageChange($event)"
+      class="bg-zinc-800 border border-zinc-700 text-zinc-200 text-xs rounded-lg px-3 py-1.5 outline-none focus:border-indigo-500 transition-all font-semibold cursor-pointer">
+      @for (lang of languages; track lang.value) {
+        <option [value]="lang.value">{{ lang.label }}</option>
+      }
+    </select>
+  </div>
+
+  <!-- Monaco Editor Container -->
+  <div #editorContainer class="flex-grow w-full min-h-0"></div>
+</div>
