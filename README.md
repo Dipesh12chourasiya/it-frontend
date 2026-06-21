@@ -155,16 +155,6 @@ frontend/src/
 └── styles.css                   # Global styles and TailwindCSS
 ```
 
-## Screenshots
-
-> Screenshots coming soon
-
-- Login Page
-- Recruiter Dashboard
-- Interview Room (Video + Code Editor + Whiteboard)
-- Live Monitoring Feed
-- Risk Report with PDF Export
-
 ## Future Improvements
 
 - [ ] Candidate performance analytics dashboard
