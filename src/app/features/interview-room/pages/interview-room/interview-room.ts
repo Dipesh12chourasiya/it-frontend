@@ -306,9 +306,32 @@ export class InterviewRoom implements OnInit, OnDestroy {
   private createPeerConnection(): RTCPeerConnection {
     console.log('[WebRTC] Creating new PeerConnection');
     const pc = new RTCPeerConnection({
+      // ── ICE servers ─────────────────────────────────────────────────
+      // Google STUN is free and covers ~85 % of NAT scenarios.
+      // For symmetric NATs (corporate firewalls, some mobile carriers)
+      // you MUST add a TURN server.  The free Metered TURN below
+      // works for dev/staging; replace with your own for production.
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
         { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' },
+        // Free Metered TURN (replace with your own for production)
+        // https://www.metered.ca/tools/openrelay/
+        {
+          urls: 'turn:openrelay.metered.ca:80',
+          username: 'openrelayproject',
+          credential: 'openrelayproject',
+        },
+        {
+          urls: 'turn:openrelay.metered.ca:443',
+          username: 'openrelayproject',
+          credential: 'openrelayproject',
+        },
+        {
+          urls: 'turns:openrelay.metered.ca:443?transport=tcp',
+          username: 'openrelayproject',
+          credential: 'openrelayproject',
+        },
       ],
     });
 
@@ -344,11 +367,32 @@ export class InterviewRoom implements OnInit, OnDestroy {
       }
     };
 
+    pc.onicecandidateerror = (event) => {
+      console.warn('[WebRTC] ICE candidate error:', event.errorCode, event.errorText);
+    };
+
     pc.onconnectionstatechange = () => {
-      if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
+      console.log('[WebRTC] Connection state:', pc.connectionState);
+      if (pc.connectionState === 'disconnected') {
+        console.warn('[WebRTC] Peer disconnected — waiting for ICE restart...');
+        // Give ICE a moment to recover before tearing down
+        setTimeout(() => {
+          if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
+            console.error('[WebRTC] Peer connection failed, cleaning up remote stream');
+            this.remoteStreamSignal.set(null);
+            this.updateRemoteParticipantStream();
+          }
+        }, 5000);
+      }
+      if (pc.connectionState === 'failed') {
+        console.error('[WebRTC] Connection failed — cleaning up');
         this.remoteStreamSignal.set(null);
         this.updateRemoteParticipantStream();
       }
+    };
+
+    pc.oniceconnectionstatechange = () => {
+      console.log('[WebRTC] ICE connection state:', pc.iceConnectionState);
     };
 
     this.peerConnection = pc;

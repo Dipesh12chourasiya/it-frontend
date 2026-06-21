@@ -1,5 +1,6 @@
 import { Injectable, inject, NgZone, signal } from '@angular/core';
 import { io, Socket } from 'socket.io-client';
+import { environment } from '../../../environments/environment';
 import { TokenService } from './token.service';
 
 export interface CandidateEvent {
@@ -24,6 +25,23 @@ export interface TrustScoreData {
   score: number;
 }
 
+/**
+ * Derive the Socket.IO server URL from the REST API base URL.
+ *
+ * Production backend lives at https://interview-guard-ai-api.onrender.com
+ * and Socket.IO is served from the same origin — so we strip /api/v1
+ * and use the bare origin (protocol + host).
+ *
+ * Development backend lives at http://localhost:5000
+ */
+function getSocketUrl(): string {
+  const apiUrl = environment.apiUrl; // e.g. "https://…onrender.com/api/v1"
+  // Remove trailing /api/v1 (or any /api/vX) to get the bare origin
+  const origin = apiUrl.replace(/\/api\/v\d+\/?$/, '');
+  console.log(`[Socket] Connecting to: ${origin}`);
+  return origin;
+}
+
 @Injectable({
   providedIn: 'root',
 })
@@ -46,10 +64,19 @@ export class SocketService {
       return;
     }
 
+    const url = getSocketUrl();
+
     this.ngZone.runOutsideAngular(() => {
-      this.socket = io('http://localhost:5000', {
+      this.socket = io(url, {
         auth: { token },
+        // Prefer WebSocket; fall back to long-polling if WSS is unavailable
         transports: ['websocket', 'polling'],
+        // Reconnect automatically with exponential back-off
+        reconnection: true,
+        reconnectionAttempts: 10,
+        reconnectionDelay: 1000,
+        reconnectionDelayMax: 5000,
+        timeout: 10000,
       });
 
       this.socket.on('connect', () => {
@@ -57,13 +84,21 @@ export class SocketService {
         console.log('[Socket] Connected:', this.socket?.id);
       });
 
-      this.socket.on('disconnect', () => {
+      this.socket.on('disconnect', (reason) => {
         this.ngZone.run(() => this.isConnected.set(false));
-        console.log('[Socket] Disconnected');
+        console.log('[Socket] Disconnected —', reason);
       });
 
       this.socket.on('connect_error', (err) => {
         console.error('[Socket] Connection error:', err.message);
+      });
+
+      this.socket.io.on('reconnect_attempt', (attempt) => {
+        console.log(`[Socket] Reconnection attempt #${attempt}`);
+      });
+
+      this.socket.io.on('reconnect', () => {
+        console.log('[Socket] Reconnected successfully');
       });
     });
   }
