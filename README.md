@@ -164,5 +164,4 @@ frontend/src/
 - [ ] Email notification for interview invites
 - [ ] Batch interview scheduling
 - [ ] Candidate comparison reports
-- [ ] Admin panel for user management
 
