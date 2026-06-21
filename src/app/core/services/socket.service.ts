@@ -14,7 +14,7 @@ export interface MonitoringEventData {
   _id: string;
   interviewId: string;
   candidateId: { _id: string; name: string; email: string; role: string } | string;
-  eventType: 'TAB_SWITCH' | 'WINDOW_BLUR' | 'COPY' | 'PASTE' | 'FULLSCREEN_EXIT';
+  eventType: 'TAB_SWITCH' | 'WINDOW_BLUR' | 'COPY' | 'PASTE' | 'FULLSCREEN_EXIT' | 'NO_FACE' | 'MULTIPLE_FACE' | 'FACE_AWAY';
   timestamp: string;
 }
 

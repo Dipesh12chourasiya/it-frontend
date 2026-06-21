@@ -170,6 +170,25 @@
                         {{ candidate.lastActivity ? formatTime(candidate.lastActivity) : 'No activity' }}
                       </div>
                     </div>
+
+                    <!-- Action Buttons -->
+                    <div class="flex items-center gap-2 shrink-0 border-l border-border-default/40 pl-4">
+                      <a [routerLink]="['/reports', selectedInterviewId()]"
+                         (click)="$event.stopPropagation()"
+                         title="View Report"
+                         class="w-8 h-8 flex items-center justify-center rounded-lg bg-bg-base/60 border border-border-default/40 text-text-secondary hover:text-primary hover:border-primary/30 transition-all">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                      </a>
+                      <button (click)="downloadPdf(candidate, $event)"
+                              title="Download PDF"
+                              class="w-8 h-8 flex items-center justify-center rounded-lg bg-bg-base/60 border border-border-default/40 text-text-secondary hover:text-success hover:border-success/30 transition-all">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                      </button>
+                    </div>
                   </div>
                 </div>
 
@@ -201,6 +220,22 @@
                       <div class="bg-bg-base/60 rounded-lg p-3 border border-border-default/40">
                         <span class="text-[9px] text-text-muted font-semibold uppercase">Fullscreen Exits</span>
                         <p class="text-lg font-bold text-danger mt-0.5">{{ candidate.statistics.totalFullscreenExits }}</p>
+                      </div>
+                    </div>
+
+                    <!-- Face Monitoring Stats -->
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                      <div class="bg-bg-base/60 rounded-lg p-3 border border-border-default/40">
+                        <span class="text-[9px] text-text-muted font-semibold uppercase">No Face</span>
+                        <p class="text-lg font-bold text-danger mt-0.5">{{ candidate.statistics.totalNoFaceEvents }}</p>
+                      </div>
+                      <div class="bg-bg-base/60 rounded-lg p-3 border border-border-default/40">
+                        <span class="text-[9px] text-text-muted font-semibold uppercase">Multiple Faces</span>
+                        <p class="text-lg font-bold text-danger mt-0.5">{{ candidate.statistics.totalMultipleFaceEvents }}</p>
+                      </div>
+                      <div class="bg-bg-base/60 rounded-lg p-3 border border-border-default/40">
+                        <span class="text-[9px] text-text-muted font-semibold uppercase">Looking Away</span>
+                        <p class="text-lg font-bold text-warning mt-0.5">{{ candidate.statistics.totalFaceAwayEvents }}</p>
                       </div>
                     </div>
 

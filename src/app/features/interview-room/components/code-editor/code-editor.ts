@@ -28,6 +28,7 @@ export class CodeEditor implements OnInit, OnDestroy {
   @Input() initialLanguage = 'javascript';
   @Output() codeChange = new EventEmitter<string>();
   @Output() languageChange = new EventEmitter<string>();
+  @Output() pasteDetected = new EventEmitter<void>();
 
   private readonly ngZone = inject(NgZone);
   private editor: any = null;
@@ -124,6 +125,11 @@ export class CodeEditor implements OnInit, OnDestroy {
     this.editor.onDidChangeModelContent(() => {
       const code = this.editor.getValue();
       this.codeChange.emit(code);
+    });
+
+    // Listen for paste events inside Monaco (it calls preventDefault on native paste)
+    this.editor.onDidPaste(() => {
+      this.pasteDetected.emit();
     });
 
     this.isInitialized = true;

@@ -53,6 +53,12 @@ export const routes: Routes = [
         loadComponent: () => import('./features/recruiter/pages/live-activity/live-activity').then(m => m.LiveActivity)
       },
       {
+        path: 'reports/:interviewId',
+        canActivate: [roleGuard],
+        data: { roles: ['recruiter'] },
+        loadComponent: () => import('./features/reports/pages/report-detail/report-detail').then(m => m.ReportDetail)
+      },
+      {
         path: 'join',
         loadComponent: () => import('./features/candidate/pages/join/join').then(m => m.Join)
       }

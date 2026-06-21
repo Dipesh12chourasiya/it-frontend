@@ -1,1 +1,243 @@
-<p>report-detail works!</p>
+<div class="page-container space-y-8">
+
+  <!-- Header -->
+  <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+    <div>
+      <a routerLink="/interviews" class="inline-flex items-center gap-1.5 text-xs text-text-muted hover:text-primary transition-colors mb-2 cursor-pointer">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
+        </svg>
+        Back to Interviews
+      </a>
+      <h1 class="section-title">Interview Risk Report</h1>
+      <p class="text-text-secondary mt-1">AI-powered behavioral analysis and trust assessment.</p>
+    </div>
+    <div class="flex items-center gap-3">
+      @if (report()) {
+        <button (click)="exportReport()" class="btn-secondary !text-xs">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+          Export Report
+        </button>
+      }
+    </div>
+  </div>
+
+  <!-- Candidate Selector -->
+  <div class="card-surface space-y-4">
+    <h3 class="text-sm font-bold text-text-secondary uppercase tracking-widest">Select Candidate</h3>
+    @if (isLoading()) {
+      <div class="flex items-center justify-center py-8">
+        <div class="spinner"></div>
+      </div>
+    } @else if (candidates().length === 0) {
+      <div class="text-center py-8 text-text-muted text-sm">No candidates found for this interview.</div>
+    } @else {
+      <div class="flex flex-wrap gap-2">
+        @for (candidate of candidates(); track candidate.candidateName) {
+          <button
+            (click)="selectCandidate(getCandidateId(candidate))"
+            class="px-4 py-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer"
+            [ngClass]="{
+              'bg-primary/10 border-primary/30 text-primary': selectedCandidateId() === getCandidateId(candidate),
+              'bg-bg-base/60 border-border-default text-text-secondary hover:border-primary/20': selectedCandidateId() !== getCandidateId(candidate)
+            }">
+            {{ candidate.candidateName }}
+          </button>
+        }
+      </div>
+    }
+  </div>
+
+  <!-- Loading / Error / Report Content -->
+  @if (isLoadingReport()) {
+    <div class="flex flex-col items-center justify-center py-24 space-y-4">
+      <div class="spinner"></div>
+      <p class="text-text-secondary animate-pulse text-sm">Generating risk report...</p>
+    </div>
+  } @else if (errorMessage()) {
+    <div class="card-surface text-center py-16 space-y-4">
+      <div class="w-14 h-14 bg-danger/10 rounded-full flex items-center justify-center text-danger mx-auto border border-danger/20">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+      </div>
+      <h3 class="text-lg font-bold text-text-primary">Error</h3>
+      <p class="text-text-secondary text-sm max-w-sm mx-auto">{{ errorMessage() }}</p>
+    </div>
+  } @else if (report()) {
+
+    <!-- Top Summary Cards -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <!-- Trust Score -->
+      <div class="bg-bg-surface/20 border border-border-default p-5 rounded-2xl space-y-1">
+        <span class="text-[10px] font-semibold text-text-muted uppercase tracking-wider">Trust Score</span>
+        <h3 class="text-3xl font-bold" [ngClass]="getRiskColor(report()!.riskLevel)">{{ report()!.trustScore }}</h3>
+        <div class="w-full h-1.5 bg-bg-elevated rounded-full overflow-hidden mt-2">
+          <div class="h-full rounded-full transition-all duration-700"
+               [ngClass]="getScoreBarColor(report()!.trustScore)"
+               [style.width.%]="report()!.trustScore"></div>
+        </div>
+      </div>
+      <!-- Risk Level -->
+      <div class="bg-bg-surface/20 border border-border-default p-5 rounded-2xl space-y-1">
+        <span class="text-[10px] font-semibold text-text-muted uppercase tracking-wider">Risk Level</span>
+        <div class="mt-1">
+          <span class="px-3 py-1 rounded-full text-xs font-bold border"
+                [ngClass]="getRiskBg(report()!.riskLevel)">
+            {{ report()!.riskLevel }}
+          </span>
+        </div>
+      </div>
+      <!-- Duration -->
+      <div class="bg-bg-surface/20 border border-border-default p-5 rounded-2xl space-y-1">
+        <span class="text-[10px] font-semibold text-text-muted uppercase tracking-wider">Duration</span>
+        <h3 class="text-3xl font-bold text-text-primary">{{ report()!.statistics.interviewDurationMinutes }}<span class="text-lg font-medium text-text-muted ml-1">min</span></h3>
+      </div>
+      <!-- Total Events -->
+      <div class="bg-bg-surface/20 border border-border-default p-5 rounded-2xl space-y-1">
+        <span class="text-[10px] font-semibold text-text-muted uppercase tracking-wider">Total Events</span>
+        <h3 class="text-3xl font-bold text-primary">
+          {{ report()!.statistics.tabSwitches + report()!.statistics.copyEvents + report()!.statistics.pasteEvents + report()!.statistics.fullscreenExits + report()!.statistics.noFaceEvents + report()!.statistics.multipleFaceEvents + report()!.statistics.faceAwayEvents }}
+        </h3>
+      </div>
+    </div>
+
+    <!-- Report Sections -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+      <!-- Interview Summary -->
+      <div class="card-surface space-y-3">
+        <div class="flex items-center gap-2">
+          <div class="w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center border border-primary/20">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+          </div>
+          <h3 class="text-sm font-bold text-text-secondary uppercase tracking-widest">Interview Summary</h3>
+        </div>
+        <p class="text-text-primary text-sm leading-relaxed">{{ report()!.interviewSummary }}</p>
+      </div>
+
+      <!-- Risk Summary -->
+      <div class="card-surface space-y-3">
+        <div class="flex items-center gap-2">
+          <div class="w-8 h-8 bg-warning/10 rounded-lg flex items-center justify-center border border-warning/20">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-warning" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+            </svg>
+          </div>
+          <h3 class="text-sm font-bold text-text-secondary uppercase tracking-widest">Risk Summary</h3>
+        </div>
+        <div class="space-y-2">
+          @for (line of report()!.riskSummary.split('. '); track $index) {
+            @if (line.trim()) {
+              <p class="text-text-primary text-sm leading-relaxed">{{ line.trim() }}{{ line.endsWith('.') ? '' : '.' }}</p>
+            }
+          }
+        </div>
+      </div>
+
+      <!-- Behavior Analysis -->
+      <div class="card-surface space-y-3">
+        <div class="flex items-center gap-2">
+          <div class="w-8 h-8 bg-info/10 rounded-lg flex items-center justify-center border border-info/20">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-info" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              <path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+            </svg>
+          </div>
+          <h3 class="text-sm font-bold text-text-secondary uppercase tracking-widest">Behavior Analysis</h3>
+        </div>
+        <div class="space-y-1.5">
+          @for (line of report()!.behaviorAnalysis.split('. '); track $index) {
+            @if (line.trim()) {
+              <div class="flex items-start gap-2 text-sm">
+                <span class="text-primary mt-0.5 shrink-0">&#8226;</span>
+                <span class="text-text-primary leading-relaxed">{{ line.trim() }}{{ line.endsWith('.') ? '' : '.' }}</span>
+              </div>
+            }
+          }
+        </div>
+      </div>
+
+      <!-- Final Recommendation -->
+      <div class="card-surface space-y-3">
+        <div class="flex items-center gap-2">
+          <div class="w-8 h-8 rounded-lg flex items-center justify-center border"
+               [ngClass]="{
+                 'bg-success/10 border-success/20': report()!.trustScore >= 80,
+                 'bg-warning/10 border-warning/20': report()!.trustScore >= 50 && report()!.trustScore < 80,
+                 'bg-danger/10 border-danger/20': report()!.trustScore < 50
+               }">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4"
+                 [ngClass]="{
+                   'text-success': report()!.trustScore >= 80,
+                   'text-warning': report()!.trustScore >= 50 && report()!.trustScore < 80,
+                   'text-danger': report()!.trustScore < 50
+                 }"
+                 fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <h3 class="text-sm font-bold text-text-secondary uppercase tracking-widest">Final Recommendation</h3>
+        </div>
+        <div class="space-y-2">
+          @for (part of report()!.finalRecommendation.split(' — '); track $index) {
+            @if ($index === 0) {
+              <span class="inline-block px-3 py-1 rounded-full text-xs font-bold border mb-2"
+                    [ngClass]="getRiskBg(report()!.riskLevel)">
+                {{ part }}
+              </span>
+            } @else {
+              <p class="text-text-primary text-sm leading-relaxed">{{ part }}</p>
+            }
+          }
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Statistics Section -->
+    <div class="card-surface space-y-4">
+      <h3 class="text-sm font-bold text-text-secondary uppercase tracking-widest">Event Statistics</h3>
+      <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+        <div class="bg-bg-base/60 rounded-xl p-4 border border-border-default/40">
+          <span class="text-[9px] text-text-muted font-semibold uppercase tracking-wider">Tab Switches</span>
+          <p class="text-2xl font-bold text-warning mt-1">{{ report()!.statistics.tabSwitches }}</p>
+        </div>
+        <div class="bg-bg-base/60 rounded-xl p-4 border border-border-default/40">
+          <span class="text-[9px] text-text-muted font-semibold uppercase tracking-wider">Copy Events</span>
+          <p class="text-2xl font-bold text-warning mt-1">{{ report()!.statistics.copyEvents }}</p>
+        </div>
+        <div class="bg-bg-base/60 rounded-xl p-4 border border-border-default/40">
+          <span class="text-[9px] text-text-muted font-semibold uppercase tracking-wider">Paste Events</span>
+          <p class="text-2xl font-bold text-danger mt-1">{{ report()!.statistics.pasteEvents }}</p>
+        </div>
+        <div class="bg-bg-base/60 rounded-xl p-4 border border-border-default/40">
+          <span class="text-[9px] text-text-muted font-semibold uppercase tracking-wider">Fullscreen Exits</span>
+          <p class="text-2xl font-bold text-danger mt-1">{{ report()!.statistics.fullscreenExits }}</p>
+        </div>
+        <div class="bg-bg-base/60 rounded-xl p-4 border border-border-default/40">
+          <span class="text-[9px] text-text-muted font-semibold uppercase tracking-wider">No Face</span>
+          <p class="text-2xl font-bold text-danger mt-1">{{ report()!.statistics.noFaceEvents }}</p>
+        </div>
+        <div class="bg-bg-base/60 rounded-xl p-4 border border-border-default/40">
+          <span class="text-[9px] text-text-muted font-semibold uppercase tracking-wider">Multiple Faces</span>
+          <p class="text-2xl font-bold text-danger mt-1">{{ report()!.statistics.multipleFaceEvents }}</p>
+        </div>
+        <div class="bg-bg-base/60 rounded-xl p-4 border border-border-default/40">
+          <span class="text-[9px] text-text-muted font-semibold uppercase tracking-wider">Looking Away</span>
+          <p class="text-2xl font-bold text-warning mt-1">{{ report()!.statistics.faceAwayEvents }}</p>
+        </div>
+        <div class="bg-bg-base/60 rounded-xl p-4 border border-border-default/40">
+          <span class="text-[9px] text-text-muted font-semibold uppercase tracking-wider">Duration</span>
+          <p class="text-2xl font-bold text-text-primary mt-1">{{ report()!.statistics.interviewDurationMinutes }}<span class="text-sm font-medium text-text-muted ml-0.5">m</span></p>
+        </div>
+      </div>
+    </div>
+
+  }
+
+</div>

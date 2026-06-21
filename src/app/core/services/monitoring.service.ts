@@ -9,7 +9,10 @@ export type MonitoringEventType =
   | 'COPY'
   | 'PASTE'
   | 'FULLSCREEN_EXIT'
-  | 'DEVTOOLS_OPEN';
+  | 'DEVTOOLS_OPEN'
+  | 'NO_FACE'
+  | 'MULTIPLE_FACE'
+  | 'FACE_AWAY';
 
 @Injectable({
   providedIn: 'root',
@@ -25,7 +28,7 @@ export class MonitoringService {
 
   // Debounce map: eventType → last fired timestamp (ms)
   private readonly debounceTimes: Partial<Record<MonitoringEventType, number>> = {};
-  private readonly debounceThresholdMs = 2000;
+  private readonly debounceThresholdMs = 1500;
 
   // Stored listener references for proper cleanup
   private visibilityChangeListener: (() => void) | null = null;
@@ -132,16 +135,20 @@ export class MonitoringService {
    * Debounce and POST the event to the backend API.
    */
   private sendEvent(eventType: MonitoringEventType): void {
-    if (!this.isMonitoring || !this.interviewId || !this.candidateId) return;
+    if (!this.isMonitoring || !this.interviewId || !this.candidateId) {
+      console.warn(`[Monitoring] Event ${eventType} dropped — monitoring inactive or IDs missing (isMonitoring=${this.isMonitoring}, interviewId=${this.interviewId}, candidateId=${this.candidateId})`);
+      return;
+    }
 
     const now = Date.now();
     const lastFired = this.debounceTimes[eventType] ?? 0;
     if (now - lastFired < this.debounceThresholdMs) {
+      console.log(`[Monitoring] Event ${eventType} debounced (${now - lastFired}ms since last)`);
       return; // Duplicate within debounce window — skip
     }
     this.debounceTimes[eventType] = now;
 
-    console.log(`[Monitoring] Event detected: ${eventType}`);
+    console.log(`[Monitoring] Sending event: ${eventType} at ${new Date().toISOString()}`);
 
     this.http
       .post(`${this.baseUrl}/event`, {
@@ -150,6 +157,9 @@ export class MonitoringService {
         eventType,
       })
       .subscribe({
+        next: (res: any) => {
+          console.log(`[Monitoring] Event ${eventType} logged successfully`, res);
+        },
         error: (err) =>
           console.error(`[Monitoring] Failed to log event ${eventType}:`, err),
       });

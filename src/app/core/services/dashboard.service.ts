@@ -19,6 +19,9 @@ export interface DashboardCandidate {
     totalPasteEvents: number;
     totalFullscreenExits: number;
     totalDevtoolsOpens: number;
+    totalNoFaceEvents: number;
+    totalMultipleFaceEvents: number;
+    totalFaceAwayEvents: number;
     totalMonitoringEvents: number;
   };
   recentEvents: {
@@ -50,6 +53,9 @@ export interface CandidateDashboardResponse {
     totalPasteEvents: number;
     totalFullscreenExits: number;
     totalDevtoolsOpens: number;
+    totalNoFaceEvents: number;
+    totalMultipleFaceEvents: number;
+    totalFaceAwayEvents: number;
     totalMonitoringEvents: number;
   };
   recentEvents: any[];

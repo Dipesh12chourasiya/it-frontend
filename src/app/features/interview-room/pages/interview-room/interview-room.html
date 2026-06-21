@@ -113,7 +113,8 @@
           [initialCode]="workspaceCode()"
           [initialLanguage]="workspaceLanguage()"
           (codeChange)="onCodeChange($event)"
-          (languageChange)="onLanguageChange($event)">
+          (languageChange)="onLanguageChange($event)"
+          (pasteDetected)="onCodePaste()">
         </app-code-editor>
       </div>
       <div class="panel-divider" (mousedown)="onDividerMouseDown($event)">

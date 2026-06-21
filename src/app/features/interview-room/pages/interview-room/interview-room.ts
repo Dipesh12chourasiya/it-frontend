@@ -4,6 +4,7 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { SessionService } from '../../../../core/services/session.service';
 import { AuthService } from '../../../../core/services/auth.service';
 import { MonitoringService } from '../../../../core/services/monitoring.service';
+import { FaceMonitoringService } from '../../../../core/services/face-monitoring.service';
 import { SocketService } from '../../../../core/services/socket.service';
 import { WorkspaceService, WorkspaceData } from '../../../../core/services/workspace.service';
 import { Session } from '../../../../core/models/session.model';
@@ -39,6 +40,7 @@ export class InterviewRoom implements OnInit, OnDestroy {
   private readonly sessionService = inject(SessionService);
   private readonly authService = inject(AuthService);
   private readonly monitoringService = inject(MonitoringService);
+  private readonly faceMonitoringService = inject(FaceMonitoringService);
   private readonly socketService = inject(SocketService);
   private readonly workspaceService = inject(WorkspaceService);
 
@@ -113,6 +115,7 @@ export class InterviewRoom implements OnInit, OnDestroy {
     this.clearTimer();
     this.stopAutoSave();
     this.monitoringService.stopMonitoring();
+    this.faceMonitoringService.stopMonitoring();
     this.cleanupWebRTC();
 
     document.removeEventListener('fullscreenchange', this.fullscreenChangeHandler);
@@ -546,6 +549,15 @@ export class InterviewRoom implements OnInit, OnDestroy {
     this.pendingCodeSave = code;
   }
 
+  /**
+   * Called when Monaco Editor fires its onDidPaste event.
+   * The global document paste listener is blocked by Monaco calling preventDefault(),
+   * so we manually report the paste event from here.
+   */
+  onCodePaste(): void {
+    this.monitoringService.reportEvent('PASTE');
+  }
+
   onLanguageChange(language: string): void {
     this.workspaceLanguage.set(language);
     if (this.currentInterviewId) {
@@ -638,6 +650,15 @@ export class InterviewRoom implements OnInit, OnDestroy {
 
             await this.setupLocalMedia();
 
+            // Start AI face monitoring using the existing local camera stream
+            if (this.localStream && candidateId) {
+              this.faceMonitoringService.startMonitoring(
+                this.localStream,
+                interviewId,
+                candidateId
+              );
+            }
+
             this.socketService.connect();
             this.setupSignalingListeners();
 
@@ -712,6 +733,7 @@ export class InterviewRoom implements OnInit, OnDestroy {
     this.isLoading.set(true);
     this.stopAutoSave();
     this.monitoringService.stopMonitoring();
+    this.faceMonitoringService.stopMonitoring();
 
     if (this.currentInterviewId) {
       this.socketService.leaveInterview(this.currentInterviewId);

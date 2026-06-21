@@ -5,6 +5,7 @@ import { FormsModule } from '@angular/forms';
 import { DashboardService, DashboardCandidate, InterviewDashboardResponse } from '../../../../core/services/dashboard.service';
 import { SocketService, CandidateEvent, MonitoringEventData, TrustScoreData } from '../../../../core/services/socket.service';
 import { InterviewService } from '../../../../core/services';
+import { ReportService } from '../../../../core/services/report.service';
 import { Interview } from '../../../../core/models/interview.model';
 
 
@@ -19,6 +20,7 @@ export class RecruiterDashboard implements OnInit, OnDestroy {
   private readonly dashboardService = inject(DashboardService);
   private readonly socketService = inject(SocketService);
   private readonly interviewService = inject(InterviewService);
+  private readonly reportService = inject(ReportService);
 
   readonly interviews = signal<Interview[]>([]);
   readonly selectedInterviewId = signal<string | null>(null);
@@ -63,6 +65,9 @@ export class RecruiterDashboard implements OnInit, OnDestroy {
     PASTE: { icon: '📝', color: 'text-danger', label: 'Paste Detected' },
     FULLSCREEN_EXIT: { icon: '🖥️', color: 'text-danger', label: 'Fullscreen Exit' },
     DEVTOOLS_OPEN: { icon: '🛠️', color: 'text-danger', label: 'DevTools Opened' },
+    NO_FACE: { icon: '👁️', color: 'text-danger', label: 'No Face Detected' },
+    MULTIPLE_FACE: { icon: '👥', color: 'text-danger', label: 'Multiple Faces' },
+    FACE_AWAY: { icon: '↪️', color: 'text-warning', label: 'Looking Away' },
     CANDIDATE_JOINED: { icon: '🟢', color: 'text-success', label: 'Candidate Joined' },
     CANDIDATE_LEFT: { icon: '🔴', color: 'text-danger', label: 'Candidate Left' },
   };
@@ -289,6 +294,20 @@ export class RecruiterDashboard implements OnInit, OnDestroy {
 
   clearLiveEvents(): void {
     this.liveEvents.set([]);
+  }
+
+  getCandidateId(candidate: DashboardCandidate): string {
+    const id = candidate.candidateId;
+    return typeof id === 'object' && id !== null ? (id as any)._id : id;
+  }
+
+  downloadPdf(candidate: DashboardCandidate, event: Event): void {
+    event.stopPropagation();
+    const interviewId = this.selectedInterviewId();
+    const candidateId = this.getCandidateId(candidate);
+    if (interviewId && candidateId) {
+      this.reportService.downloadPdfReport(interviewId, candidateId);
+    }
   }
 }
 
