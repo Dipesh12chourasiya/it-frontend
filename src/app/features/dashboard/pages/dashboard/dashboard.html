@@ -24,7 +24,7 @@
 
   <!-- Quick Action / Workspace Cards -->
   <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-    
+
     @if (currentUser()?.role === 'recruiter') {
       <!-- Recruiter card -->
       <div class="card-surface flex flex-col justify-between space-y-4 hover:border-primary/30 transition-colors">
@@ -93,39 +93,126 @@
 
   </div>
 
-  <!-- Stats Grid (Only relevant for Recruiter) -->
+  <!-- Stats Grid (Recruiter only — from API) -->
   @if (currentUser()?.role === 'recruiter') {
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-      <div class="bg-bg-surface/20 border border-border-default p-6 rounded-2xl">
-        <span class="text-xs font-semibold text-text-muted uppercase tracking-wider">Scheduled Evaluations</span>
-        <h3 class="text-3xl font-bold mt-2 text-text-primary">4</h3>
+    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4">
+
+      <!-- Total Candidates -->
+      <div class="bg-bg-surface/20 border border-border-default p-5 rounded-2xl">
+        <span class="text-[10px] font-semibold text-text-muted uppercase tracking-wider">Total Candidates</span>
+        @if (isLoadingOverview()) {
+          <div class="mt-2 h-8 w-12 animate-pulse rounded bg-bg-elevated"></div>
+        } @else {
+          <h3 class="text-3xl font-bold mt-2 text-text-primary">{{ overview()?.totalCandidates ?? 0 }}</h3>
+        }
       </div>
-      <div class="bg-bg-surface/20 border border-border-default p-6 rounded-2xl">
-        <span class="text-xs font-semibold text-text-muted uppercase tracking-wider">Completed Sessions</span>
-        <h3 class="text-3xl font-bold mt-2 text-text-primary">0</h3>
+
+      <!-- Active Interviews -->
+      <div class="bg-bg-surface/20 border border-border-default p-5 rounded-2xl">
+        <span class="text-[10px] font-semibold text-text-muted uppercase tracking-wider">Active Interviews</span>
+        @if (isLoadingOverview()) {
+          <div class="mt-2 h-8 w-12 animate-pulse rounded bg-bg-elevated"></div>
+        } @else {
+          <h3 class="text-3xl font-bold mt-2 text-primary">{{ overview()?.activeInterviews ?? 0 }}</h3>
+        }
       </div>
-      <div class="bg-bg-surface/20 border border-border-default p-6 rounded-2xl">
-        <span class="text-xs font-semibold text-text-muted uppercase tracking-wider">AI Flags Triggered</span>
-        <h3 class="text-3xl font-bold mt-2 text-primary">0</h3>
+
+      <!-- Average Trust Score -->
+      <div class="bg-bg-surface/20 border border-border-default p-5 rounded-2xl">
+        <span class="text-[10px] font-semibold text-text-muted uppercase tracking-wider">Avg Trust Score</span>
+        @if (isLoadingOverview()) {
+          <div class="mt-2 h-8 w-12 animate-pulse rounded bg-bg-elevated"></div>
+        } @else {
+          <h3 class="text-3xl font-bold mt-2"
+              [ngClass]="getScoreColor(overview()?.averageTrustScore ?? 100)">
+            {{ overview()?.averageTrustScore ?? 100 }}
+          </h3>
+        }
       </div>
+
+      <!-- High Risk Candidates -->
+      <div class="bg-bg-surface/20 border border-border-default p-5 rounded-2xl">
+        <span class="text-[10px] font-semibold text-text-muted uppercase tracking-wider">High Risk</span>
+        @if (isLoadingOverview()) {
+          <div class="mt-2 h-8 w-12 animate-pulse rounded bg-bg-elevated"></div>
+        } @else {
+          <h3 class="text-3xl font-bold mt-2 text-danger">{{ overview()?.highRiskCandidates ?? 0 }}</h3>
+        }
+      </div>
+
+      <!-- Monitoring Events -->
+      <div class="bg-bg-surface/20 border border-border-default p-5 rounded-2xl">
+        <span class="text-[10px] font-semibold text-text-muted uppercase tracking-wider">Total Events</span>
+        @if (isLoadingOverview()) {
+          <div class="mt-2 h-8 w-12 animate-pulse rounded bg-bg-elevated"></div>
+        } @else {
+          <h3 class="text-3xl font-bold mt-2 text-text-primary">{{ overview()?.totalMonitoringEvents ?? 0 }}</h3>
+        }
+      </div>
+
     </div>
   }
 
-  <!-- Active Stream Placeholder / Live Area -->
-  <div class="bg-bg-surface/10 border border-border-default rounded-2xl overflow-hidden shadow-lg">
-    <div class="px-6 py-5 border-b border-border-default flex justify-between items-center bg-bg-surface/20">
-      <h3 class="text-lg font-bold text-text-primary">Active Sessions</h3>
-      <span class="flex items-center gap-2 text-primary text-xs font-semibold tracking-wider uppercase bg-primary/10 px-3 py-1 rounded-full border border-primary/20">
-        <span class="h-2 w-2 rounded-full bg-primary animate-pulse"></span>
-        Idle State
-      </span>
+  <!-- Recent Sessions / Active Streams -->
+  @if (currentUser()?.role === 'recruiter') {
+    <div class="bg-bg-surface/10 border border-border-default rounded-2xl overflow-hidden shadow-lg">
+      <div class="px-6 py-5 border-b border-border-default flex justify-between items-center bg-bg-surface/20">
+        <h3 class="text-lg font-bold text-text-primary">Recent Sessions</h3>
+        @if ((overview()?.activeSessions ?? 0) > 0) {
+          <span class="flex items-center gap-2 text-success text-xs font-semibold tracking-wider uppercase bg-success/10 px-3 py-1 rounded-full border border-success/20">
+            <span class="h-2 w-2 rounded-full bg-success animate-pulse"></span>
+            {{ overview()!.activeSessions }} Active
+          </span>
+        } @else {
+          <span class="flex items-center gap-2 text-text-muted text-xs font-semibold tracking-wider uppercase bg-text-muted/10 px-3 py-1 rounded-full border border-border-default">
+            No Active Sessions
+          </span>
+        }
+      </div>
+
+      @if (isLoadingOverview()) {
+        <div class="p-12 text-center">
+          <div class="spinner mx-auto"></div>
+          <p class="text-sm text-text-muted mt-3">Loading sessions...</p>
+        </div>
+      } @else if ((overview()?.recentSessions?.length ?? 0) === 0) {
+        <div class="p-12 text-center text-text-secondary">
+          <svg class="mx-auto h-12 w-12 text-text-muted mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+          </svg>
+          <p class="font-medium text-text-primary">No sessions yet</p>
+          <p class="text-sm text-text-muted mt-1">Sessions will appear here once candidates join your interviews.</p>
+        </div>
+      } @else {
+        <div class="divide-y divide-border-default/40">
+          @for (session of overview()!.recentSessions; track session._id) {
+            <div class="px-6 py-4 flex items-center justify-between gap-4 hover:bg-bg-surface/10 transition-colors">
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-2">
+                  <h4 class="text-sm font-semibold text-text-primary truncate">{{ session.candidateName }}</h4>
+                  <span class="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border"
+                        [ngClass]="{
+                          'bg-success/10 text-success border-success/20': session.status === 'active',
+                          'bg-text-muted/10 text-text-secondary border-border-default/50': session.status === 'left' || session.status === 'completed'
+                        }">
+                    {{ session.status }}
+                  </span>
+                </div>
+                <p class="text-[10px] text-text-muted mt-0.5">
+                  {{ session.interviewTitle }}
+                  @if (session.interviewCode) {
+                    <span class="font-mono text-primary ml-1">({{ session.interviewCode }})</span>
+                  }
+                </p>
+              </div>
+              <div class="text-right shrink-0">
+                <div class="text-lg font-bold" [ngClass]="getScoreColor(session.score)">{{ session.score }}</div>
+                <div class="text-[9px] text-text-muted">{{ formatTime(session.joinedAt) }}</div>
+              </div>
+            </div>
+          }
+        </div>
+      }
     </div>
-    <div class="p-12 text-center text-text-secondary">
-      <svg class="mx-auto h-12 w-12 text-text-muted mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-      </svg>
-      <p class="font-medium text-text-primary">No active interviews in progress right now</p>
-      <p class="text-sm text-text-muted mt-1">Start scheduling candidate invites from the Recruiter workspace card above.</p>
-    </div>
-  </div>
+  }
 </div>

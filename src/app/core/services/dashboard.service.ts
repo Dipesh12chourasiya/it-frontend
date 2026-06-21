@@ -36,6 +36,26 @@ export interface InterviewDashboardResponse {
   candidates: DashboardCandidate[];
 }
 
+export interface RecruiterOverviewResponse {
+  totalCandidates: number;
+  activeInterviews: number;
+  averageTrustScore: number;
+  highRiskCandidates: number;
+  totalMonitoringEvents: number;
+  activeSessions: number;
+  recentSessions: {
+    _id: string;
+    interviewTitle: string;
+    interviewCode: string;
+    candidateName: string;
+    candidateEmail: string;
+    score: number;
+    status: string;
+    joinedAt: string;
+    leftAt: string | null;
+  }[];
+}
+
 export interface CandidateDashboardResponse {
   candidate: {
     _id: string;
@@ -67,6 +87,15 @@ export interface CandidateDashboardResponse {
 export class DashboardService {
   private readonly http = inject(HttpClient);
   private readonly baseUrl = `${environment.apiUrl}/dashboard`;
+
+  /**
+   * Get recruiter overview statistics for the home dashboard
+   */
+  getRecruiterOverview(): Observable<{ success: boolean; data: RecruiterOverviewResponse }> {
+    return this.http.get<{ success: boolean; data: RecruiterOverviewResponse }>(
+      `${this.baseUrl}/recruiter/overview`
+    );
+  }
 
   /**
    * Get full dashboard data for an interview
