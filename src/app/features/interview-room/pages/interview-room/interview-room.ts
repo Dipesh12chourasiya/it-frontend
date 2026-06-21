@@ -86,6 +86,19 @@ export class InterviewRoom implements OnInit, OnDestroy {
   private pendingWhiteboardSave: Record<string, any> | null = null;
   private readonly AUTO_SAVE_DEBOUNCE_MS = 3000;
 
+  // ── Code-change debounce ───────────────────────────────────────────────
+  // Without this, every single keystroke triggers a socket.emit().
+  // On a fast typist that's ~15-20 events/second per client.  The server
+  // broadcasts each one to every other peer, who then calls setValue(),
+  // which triggers their own onChange, which emits back — an echo storm.
+  //
+  // Debouncing the outgoing emission means rapid typing batches into a
+  // single emit every CODE_EMIT_DEBOUNCE_MS, and the
+  // `setValue()` guard in the editor prevents the echo from re-emitting.
+  private codeEmitTimer: any = null;
+  private readonly CODE_EMIT_DEBOUNCE_MS = 150; // 150 ms — feels instant
+  private lastEmittedCode: string = '';
+
   private fullscreenChangeHandler = () => {
     this.isFullscreen.set(!!document.fullscreenElement);
   };
@@ -113,6 +126,7 @@ export class InterviewRoom implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.clearTimer();
+    this.clearCodeEmitTimer();
     this.stopAutoSave();
     this.monitoringService.stopMonitoring();
     this.faceMonitoringService.stopMonitoring();
@@ -551,10 +565,26 @@ export class InterviewRoom implements OnInit, OnDestroy {
       }
     );
 
-    this.socketService.listen<{ interviewId: string; code: string; language: string; userId: string }>(
+    this.socketService.listen<{
+      interviewId: string;
+      code: string;
+      language: string;
+      senderId: string;
+      senderSocketId: string;
+    }>(
       'code-change',
       (data) => {
-        if (data.userId === this.currentUser()?._id) return;
+        // ── Double-guard echo prevention ──────────────────────────────
+        //
+        // 1. Server uses `socket.to()` which already excludes the
+        //    sender from the broadcast.
+        // 2. Client checks senderId as a second safety net against
+        //    reconnection race conditions or duplicate events.
+        const currentUserId = this.currentUser()?._id;
+        if (data.senderId === currentUserId) return;
+
+        console.log(`[CodeSync] Received code-change from ${data.senderId} (${data.code.length} chars)`);
+
         this.workspaceCode.set(data.code);
         this.workspaceLanguage.set(data.language);
         if (this.codeEditor) {
@@ -563,10 +593,15 @@ export class InterviewRoom implements OnInit, OnDestroy {
       }
     );
 
-    this.socketService.listen<{ interviewId: string; whiteboardData: any; userId: string }>(
+    this.socketService.listen<{
+      interviewId: string;
+      whiteboardData: any;
+      senderId: string;
+      senderSocketId: string;
+    }>(
       'whiteboard-change',
       (data) => {
-        if (data.userId === this.currentUser()?._id) return;
+        if (data.senderId === this.currentUser()?._id) return;
         if (this.whiteboard) {
           this.whiteboard.updateFromExternal(data.whiteboardData);
         }
@@ -583,14 +618,38 @@ export class InterviewRoom implements OnInit, OnDestroy {
 
   onCodeChange(code: string): void {
     this.workspaceCode.set(code);
-    if (this.currentInterviewId) {
-      this.socketService.emit('code-change', {
-        interviewId: this.currentInterviewId,
-        code,
-        language: this.workspaceLanguage(),
-      });
-    }
     this.pendingCodeSave = code;
+
+    // ── Debounced socket emission ───────────────────────────────────────
+    //
+    // Rapid typing generates ~15-20 onDidChangeModelContent events per
+    // second.  Emitting each one would flood the server and trigger an
+    // echo storm (remote peer receives → setValue() → onChange → emit → …).
+    //
+    // By debouncing to 150ms, a burst of keystrokes becomes ONE socket
+    // emit.  The remote peer's editor.updateCode() uses a
+    // `_isRemoteUpdate` flag to suppress the onChange echo, breaking the
+    // loop entirely.
+    //
+    // The timer is cleared on each keystroke, so only the LAST keystroke
+    // in a burst is actually sent — no stale intermediate states.
+    if (this.codeEmitTimer) {
+      clearTimeout(this.codeEmitTimer);
+    }
+
+    this.codeEmitTimer = setTimeout(() => {
+      // Skip if the code hasn't changed since last emit
+      if (code === this.lastEmittedCode) return;
+      this.lastEmittedCode = code;
+
+      if (this.currentInterviewId) {
+        this.socketService.emit('code-change', {
+          interviewId: this.currentInterviewId,
+          code,
+          language: this.workspaceLanguage(),
+        });
+      }
+    }, this.CODE_EMIT_DEBOUNCE_MS);
   }
 
   /**
@@ -765,6 +824,13 @@ export class InterviewRoom implements OnInit, OnDestroy {
     if (this.timerInterval) clearInterval(this.timerInterval);
   }
 
+  private clearCodeEmitTimer(): void {
+    if (this.codeEmitTimer) {
+      clearTimeout(this.codeEmitTimer);
+      this.codeEmitTimer = null;
+    }
+  }
+
   // ─── Leave ─────────────────────────────────────────────────────────────
 
   leaveInterview(): void {
@@ -775,6 +841,7 @@ export class InterviewRoom implements OnInit, OnDestroy {
     }
 
     this.isLoading.set(true);
+    this.clearCodeEmitTimer();
     this.stopAutoSave();
     this.monitoringService.stopMonitoring();
     this.faceMonitoringService.stopMonitoring();

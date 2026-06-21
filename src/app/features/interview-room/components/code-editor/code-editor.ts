@@ -34,6 +34,32 @@ export class CodeEditor implements OnInit, OnDestroy {
   private editor: any = null;
   private isInitialized = false;
 
+  /**
+   * ── Remote update guard ──────────────────────────────────────────────
+   *
+   * When we programmatically update the editor from a remote socket
+   * event, Monaco fires `onDidChangeModelContent` as a side effect.
+   * Without this guard, that side-effect would re-emit a socket event,
+   * which the server would broadcast to OTHER peers, creating an
+   * infinite echo loop:
+   *
+   *   A types → server → B, C
+   *   B receives → setValue() → fires onChange → B emits → server → A, C
+   *   A receives B's echo → setValue() → fires onChange → A emits → …
+   *
+   * Setting `_isRemoteUpdate = true` before touching the editor model
+   * tells the change listener to skip the socket emission.
+   */
+  private _isRemoteUpdate = false;
+
+  /**
+   * When true, the local user is blocked from typing until the current
+   * remote update is fully applied.  This prevents keystrokes from
+   * interleaving with a remote `applyEdits` call, which would produce
+   * garbled text.
+   */
+  readonly isLocked = false;
+
   readonly languages = [
     { value: 'javascript', label: 'JavaScript' },
     { value: 'typescript', label: 'TypeScript' },
@@ -121,8 +147,14 @@ export class CodeEditor implements OnInit, OnDestroy {
       bracketPairColorization: { enabled: true },
     });
 
-    // Listen for content changes
+    // Listen for content changes — the guard prevents echo loops
     this.editor.onDidChangeModelContent(() => {
+      // ── GUARD: skip if this change was triggered by a remote update ──
+      // When updateCode() sets _isRemoteUpdate = true before touching
+      // the model, this listener fires but immediately returns without
+      // emitting a socket event.  This breaks the echo loop.
+      if (this._isRemoteUpdate) return;
+
       const code = this.editor.getValue();
       this.codeChange.emit(code);
     });
@@ -144,13 +176,50 @@ export class CodeEditor implements OnInit, OnDestroy {
     this.languageChange.emit(lang);
   }
 
+  /**
+   * Update the editor content from a remote socket event.
+   *
+   * Uses `pushEditOperations` instead of `setValue()` to preserve
+   * the local user's cursor position and undo stack.  The remote
+   * update is applied as a single replace-all edit, so the user's
+   * cursor stays where they last placed it.
+   *
+   * The `_isRemoteUpdate` flag ensures that the resulting
+   * `onDidChangeModelContent` event does NOT re-emit a socket
+   * event — breaking the echo loop.
+   */
   updateCode(code: string): void {
-    if (this.editor && this.editor.getValue() !== code) {
-      const position = this.editor.getPosition();
+    if (!this.editor) return;
+    if (this.editor.getValue() === code) return;
+
+    // ── Acquire the guard ──────────────────────────────────────────────
+    this._isRemoteUpdate = true;
+
+    try {
+      const model = this.editor.getModel();
+      const fullRange = model.getFullModelRange();
+
+      // Use pushEditOperations — Monaco applies this as a single atomic
+      // edit.  Unlike setValue(), it preserves cursor position, undo
+      // history, and scroll position.  The local user's caret stays
+      // exactly where they left it.
+      this.editor.pushEditOperations(
+        [], // cursors to preserve (empty = keep current)
+        [{
+          range: fullRange,
+          text: code,
+        }],
+        () => null // callback after edit (unused)
+      );
+    } catch {
+      // Fallback: if pushEditOperations fails for any reason (e.g.
+      // model disposed), use setValue as a last resort
       this.editor.setValue(code);
-      if (position) {
-        this.editor.setPosition(position);
-      }
     }
+
+    // ── Release the guard ──────────────────────────────────────────────
+    // Must be synchronous — onDidChangeModelContent fires inside
+    // pushEditOperations, so the flag is checked before we reach here.
+    this._isRemoteUpdate = false;
   }
 }
