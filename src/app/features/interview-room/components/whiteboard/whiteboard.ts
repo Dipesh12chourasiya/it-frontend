@@ -115,7 +115,7 @@ export class Whiteboard implements OnInit, OnDestroy, AfterViewInit {
     window.addEventListener('resize', this.boundResize);
   }
 
-  private resizeCanvas(): void {
+  resizeCanvas(): void {
     const canvas = this.canvasRef?.nativeElement;
     if (!canvas) return;
     const parent = canvas.parentElement;

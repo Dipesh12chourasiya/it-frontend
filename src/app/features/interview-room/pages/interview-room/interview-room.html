@@ -1,13 +1,15 @@
-<div class="room-container">
-  <audio [srcObject]="remoteStreamSignal()" autoplay></audio>
+<audio [srcObject]="remoteStreamSignal()" autoplay></audio>
 
+<div class="room-root" [class.whiteboard-open]="whiteboardExpanded()">
+
+  <!-- ═══ LOADING / ERROR STATES ════════════════════════════════════════ -->
   @if (isLoading()) {
-    <div class="loading-state">
-      <div class="spinner"></div>
-      <p class="loading-text">Initializing secure session...</p>
+    <div class="state-screen">
+      <div class="spinner-lg"></div>
+      <p class="state-text">Initializing secure session...</p>
     </div>
   } @else if (errorMessage()) {
-    <div class="error-state">
+    <div class="state-screen">
       <div class="error-card">
         <div class="error-icon">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -16,99 +18,59 @@
         </div>
         <h3 class="error-title">Session Error</h3>
         <p class="error-message">{{ errorMessage() }}</p>
-        <button (click)="leaveInterview()" class="error-btn">Return to Dashboard</button>
+        <button (click)="leaveInterview()" class="btn btn-secondary">Return to Dashboard</button>
       </div>
     </div>
   } @else {
 
-    <!-- ═══ TOP BAR ═══════════════════════════════════════════════════ -->
-    <div class="top-bar">
-      <div class="top-left">
+    <!-- ═══ HEADER ════════════════════════════════════════════════════════ -->
+    <header class="header">
+      <div class="header-left">
         <div class="live-badge">
           <span class="live-dot"></span>
-          <span class="live-text">Live</span>
+          <span>Live</span>
         </div>
-        <div class="session-meta">
-          <span class="session-title">{{ interview()?.title || 'Interview' }}</span>
-          <span class="session-sep">|</span>
-          <span class="session-user">{{ currentUser()?.name }}</span>
-        </div>
+        <span class="header-title">{{ interview()?.title || 'Interview' }}</span>
+        <span class="header-sep">|</span>
+        <span class="header-user">{{ currentUser()?.name }}</span>
       </div>
-      <div class="top-right">
-        <div class="pill status-pill">
+      <div class="header-right">
+        <div class="pill">
           <span class="status-dot" [class.connected]="connectionStatus() === 'Connected'"></span>
           <span>{{ connectionStatus() }}</span>
         </div>
-        <div class="pill timer-pill">
+        <div class="pill pill-mono">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
           <span>{{ elapsedTime() }}</span>
         </div>
-        <div class="pill score-pill">
-          <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" [style.color]="trustScoreColor" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
+        <div class="pill" [style.border-color]="trustScoreColor + '40'">
+          <span class="score-dot" [style.background]="trustScoreColor"></span>
           <span [style.color]="trustScoreColor">{{ trustScore() }}%</span>
         </div>
         @if (isSaving()) {
-          <div class="pill saving-pill">
+          <div class="pill pill-saving">
             <span class="saving-dot"></span>
             <span>Saving</span>
           </div>
         }
       </div>
-    </div>
+    </header>
 
-    <!-- ═══ PARTICIPANT STRIP ═════════════════════════════════════════ -->
-    <div class="participant-strip">
-      @for (p of participants(); track p.id) {
-        <div class="participant-card">
-          @if (p.stream && !p.isCameraOff) {
-            <video [srcObject]="p.stream" autoplay [muted]="p.isLocal" playsinline class="participant-video"></video>
-          } @else {
-            <div class="participant-avatar">
-              <span class="avatar-initials">{{ getParticipantInitials(p.name) }}</span>
-            </div>
-          }
-          <div class="participant-overlay">
-            <div class="participant-info">
-              <span class="participant-name">{{ p.name }}{{ p.isLocal ? ' (You)' : '' }}</span>
-              <span class="participant-role">{{ p.role }}</span>
-            </div>
-            <div class="participant-indicators">
-              @if (p.isMuted) {
-                <span class="indicator indicator-mute" title="Muted">
-                  <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /><line x1="3" y1="3" x2="21" y2="21" stroke="currentColor" stroke-width="2" /></svg>
-                </span>
-              }
-              @if (p.isCameraOff) {
-                <span class="indicator indicator-cam" title="Camera off">
-                  <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
-                </span>
-              }
-              @if (!p.isMuted && !p.isCameraOff && p.stream) {
-                <span class="indicator indicator-ok" title="Connected">
-                  <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>
-                </span>
-              }
-            </div>
-          </div>
-        </div>
-      }
+    <!-- ═══ MAIN WORKSPACE (Top: Problem + Editor) ═════════════════════ -->
+    <main class="workspace">
 
-      <!-- Placeholder when no remote -->
-      @if (participants().length < 2) {
-        <div class="participant-card waiting-card">
-          <div class="waiting-content">
-            <svg xmlns="http://www.w3.org/2000/svg" class="w-8 h-8 text-zinc-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
-            </svg>
-            <span class="waiting-text">Waiting for participant...</span>
-          </div>
-        </div>
-      }
-    </div>
+      <!-- ── Problem Panel ──────────────────────────────────────────── -->
+      <aside class="problem-col">
+        <app-problem-viewer
+          [problem]="currentProblem()"
+          [isRecruiter]="isRecruiter">
+        </app-problem-viewer>
+      </aside>
 
-    <!-- ═══ WORKSPACE ═════════════════════════════════════════════════ -->
-    <div class="workspace-area">
-      <div class="workspace-panel" [style.flex]="splitRatio">
+      <div class="col-divider"></div>
+
+      <!-- ── Editor Panel ───────────────────────────────────────────── -->
+      <section class="editor-col">
         <app-code-editor
           [initialCode]="workspaceCode()"
           [initialLanguage]="workspaceLanguage()"
@@ -116,46 +78,151 @@
           (languageChange)="onLanguageChange($event)"
           (pasteDetected)="onCodePaste()">
         </app-code-editor>
-      </div>
-      <div class="panel-divider" (mousedown)="onDividerMouseDown($event)">
-        <div class="divider-grip">
-          <div class="grip-dot"></div>
-          <div class="grip-dot"></div>
-          <div class="grip-dot"></div>
-        </div>
-      </div>
-      <div class="workspace-panel" [style.flex]="100 - splitRatio">
-        <app-whiteboard (whiteboardChange)="onWhiteboardChange($event)"></app-whiteboard>
-      </div>
-    </div>
+      </section>
 
-    <!-- ═══ CONTROL BAR ═══════════════════════════════════════════════ -->
-    <div class="control-bar">
-      <button (click)="toggleMute()" class="control-btn" [class.control-danger]="isMuted()" [title]="isMuted() ? 'Unmute' : 'Mute'">
-        @if (isMuted()) {
-          <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /><line x1="3" y1="3" x2="21" y2="21" stroke="currentColor" stroke-width="2" /></svg>
-        } @else {
-          <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg>
+      <!-- ── Whiteboard Resize Divider ───────────────────────────────── -->
+      @if (whiteboardExpanded()) {
+        <div class="wb-divider"
+             (mousedown)="onWhiteboardResizeStart($event)"
+             (touchstart)="onWhiteboardResizeStart($event)">
+        </div>
+      }
+
+      <!-- ── Whiteboard Panel (Docked Right) ─────────────────────────── -->
+      @if (whiteboardExpanded()) {
+        <aside class="whiteboard-col" [style.width.px]="whiteboardWidth()">
+          <div class="wb-col-header">
+            <span class="wb-col-title">Whiteboard</span>
+            <button class="wb-col-close" (click)="toggleWhiteboard()" title="Close whiteboard">
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+          <div class="wb-col-body">
+            <app-whiteboard (whiteboardChange)="onWhiteboardChange($event)"></app-whiteboard>
+          </div>
+        </aside>
+      }
+    </main>
+
+    <!-- ═══ PARTICIPANTS (Horizontal strip below editor) ═══════════════ -->
+    <section class="participants-strip">
+      <div class="participants-row">
+        @for (p of participants(); track p.id) {
+          <div class="participant-card">
+            @if (p.stream && !p.isCameraOff) {
+              <video [srcObject]="p.stream" autoplay [muted]="p.isLocal" playsinline class="participant-video"></video>
+            } @else {
+              <div class="participant-avatar">
+                <span class="avatar-initials">{{ getParticipantInitials(p.name) }}</span>
+              </div>
+            }
+            <div class="participant-info">
+              <span class="participant-name">{{ p.name }}{{ p.isLocal ? ' (You)' : '' }}</span>
+              <span class="participant-role">{{ p.role }}</span>
+            </div>
+            <div class="participant-status">
+              @if (p.isMuted) {
+                <span class="status-badge badge-mute" title="Muted">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /><line x1="3" y1="3" x2="21" y2="21" stroke="currentColor" stroke-width="2" /></svg>
+                </span>
+              }
+              @if (p.isCameraOff) {
+                <span class="status-badge badge-cam" title="Camera off">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
+                </span>
+              }
+              @if (!p.isMuted && !p.isCameraOff && p.stream) {
+                <span class="status-badge badge-ok" title="Connected">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>
+                </span>
+              }
+            </div>
+          </div>
         }
-      </button>
-      <button (click)="toggleCamera()" class="control-btn" [class.control-danger]="isCameraOff()" [title]="isCameraOff() ? 'Turn camera on' : 'Turn camera off'">
-        @if (isCameraOff()) {
-          <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
-        } @else {
-          <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+
+        @if (participants().length < 2) {
+          <div class="participant-card participant-waiting">
+            <div class="waiting-inner">
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+              </svg>
+              <span class="waiting-text">Waiting for participant...</span>
+            </div>
+          </div>
         }
-      </button>
-      <button (click)="toggleFullscreen()" class="control-btn" [class.control-active]="isFullscreen()" [title]="isFullscreen() ? 'Exit fullscreen' : 'Enter fullscreen'">
-        @if (isFullscreen()) {
-          <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 9V4.5M9 9H4.5M9 9L3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5m0-4.5l5.25 5.25" /></svg>
-        } @else {
-          <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg>
+      </div>
+    </section>
+
+    <!-- ═══ FOOTER CONTROLS ═════════════════════════════════════════════ -->
+    <footer class="footer">
+      <div class="footer-left">
+        @if (isRecruiter) {
+          <button class="toolbar-btn toolbar-btn-primary" (click)="openQuestionModal()" title="Manage question">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span>Manage Question</span>
+          </button>
         }
-      </button>
-      <div class="control-divider"></div>
-      <button (click)="leaveInterview()" class="control-btn control-leave" title="Leave interview">
-        <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M16 17l5-5m0 0l-5-5m5 5H9M13 7a4 4 0 11-8 0 4 4 0 018 0zM13 17a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
-      </button>
-    </div>
+      </div>
+
+      <div class="footer-center">
+        <button class="ctrl-btn" [class.ctrl-active]="isMuted()" (click)="toggleMute()" [title]="isMuted() ? 'Unmute' : 'Mute'">
+          @if (isMuted()) {
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /><line x1="3" y1="3" x2="21" y2="21" stroke="currentColor" stroke-width="2" /></svg>
+          } @else {
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg>
+          }
+        </button>
+        <button class="ctrl-btn" [class.ctrl-active]="isCameraOff()" (click)="toggleCamera()" [title]="isCameraOff() ? 'Turn camera on' : 'Turn camera off'">
+          @if (isCameraOff()) {
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
+          } @else {
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+          }
+        </button>
+        <button class="ctrl-btn" [class.ctrl-active]="isFullscreen()" (click)="toggleFullscreen()" [title]="isFullscreen() ? 'Exit fullscreen' : 'Enter fullscreen'">
+          @if (isFullscreen()) {
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 9V4.5M9 9H4.5M9 9L3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5m0-4.5l5.25 5.25" /></svg>
+          } @else {
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg>
+          }
+        </button>
+        <div class="ctrl-divider"></div>
+        <button class="ctrl-btn" [class.ctrl-active]="whiteboardExpanded()" (click)="toggleWhiteboard()" [title]="whiteboardExpanded() ? 'Close whiteboard' : 'Open whiteboard'">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+        </button>
+        <div class="ctrl-divider"></div>
+        <button class="ctrl-btn ctrl-leave" (click)="leaveInterview()" title="Leave interview">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M16 17l5-5m0 0l-5-5m5 5H9M13 7a4 4 0 11-8 0 4 4 0 018 0zM13 17a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
+        </button>
+      </div>
+
+      <div class="footer-right"></div>
+    </footer>
+
+    <!-- ═══ NOTIFICATION TOAST ═══════════════════════════════════════════ -->
+    @if (problemNotification()) {
+      <div class="toast">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+        </svg>
+        <span>{{ problemNotification() }}</span>
+      </div>
+    }
+
+    <!-- ═══ PROBLEM MODAL ════════════════════════════════════════════════ -->
+    <app-problem-modal
+      [open]="showProblemModal()"
+      [existingProblem]="currentProblem()"
+      [isSubmitting]="isProblemSubmitting()"
+      (close)="showProblemModal.set(false)"
+      (submitForm)="onProblemModalSubmit($event)">
+    </app-problem-modal>
+
   }
 </div>

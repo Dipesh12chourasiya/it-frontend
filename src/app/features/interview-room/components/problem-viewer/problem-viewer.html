@@ -1,0 +1,55 @@
+<div class="problem-viewer">
+  @if (problem) {
+    <!-- ── Header ──────────────────────────────────────────────── -->
+    <div class="pv-header">
+      <div class="pv-title-group">
+        <h2 class="pv-title">{{ problem.title }}</h2>
+        <div class="pv-meta-row">
+          <span class="pv-badge">v{{ problem.version }}</span>
+          <span class="pv-dot"></span>
+          <span class="pv-time">Updated {{ formattedDate }}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Body ─────────────────────────────────────────────────── -->
+    <div class="pv-body">
+      <!-- Description -->
+      <section class="pv-section">
+        <h3 class="pv-section-title">Description</h3>
+        <div class="pv-section-content">{{ problem.description }}</div>
+      </section>
+
+      @if (problem.examples) {
+        <section class="pv-section">
+          <h3 class="pv-section-title">Examples</h3>
+          <pre class="pv-code-block">{{ problem.examples }}</pre>
+        </section>
+      }
+
+      @if (problem.constraints) {
+        <section class="pv-section">
+          <h3 class="pv-section-title">Constraints</h3>
+          <pre class="pv-code-block pv-constraints">{{ problem.constraints }}</pre>
+        </section>
+      }
+    </div>
+  } @else {
+    <!-- ── Empty State ────────────────────────────────────────── -->
+    <div class="pv-empty">
+      <div class="pv-empty-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        </svg>
+      </div>
+      <p class="pv-empty-title">No problem shared yet</p>
+      <p class="pv-empty-hint">
+        @if (isRecruiter) {
+          Click <strong>+ Update Question</strong> to create and share a coding problem.
+        } @else {
+          Waiting for the interviewer to share a problem...
+        }
+      </p>
+    </div>
+  }
+</div>

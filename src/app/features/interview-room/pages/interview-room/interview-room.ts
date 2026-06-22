@@ -7,12 +7,13 @@ import { MonitoringService } from '../../../../core/services/monitoring.service'
 import { FaceMonitoringService } from '../../../../core/services/face-monitoring.service';
 import { SocketService } from '../../../../core/services/socket.service';
 import { WorkspaceService, WorkspaceData } from '../../../../core/services/workspace.service';
+import { ProblemService } from '../../services/problem.service';
 import { Session } from '../../../../core/models/session.model';
 import { Interview } from '../../../../core/models/interview.model';
 import { CodeEditor } from '../../components/code-editor/code-editor';
 import { Whiteboard } from '../../components/whiteboard/whiteboard';
-
-const SPLIT_RATIO_KEY = 'ig_split_ratio';
+import { ProblemViewer } from '../../components/problem-viewer/problem-viewer';
+import { ProblemModal } from '../../components/problem-modal/problem-modal';
 
 export interface Participant {
   id: string;
@@ -27,7 +28,7 @@ export interface Participant {
 @Component({
   selector: 'app-interview-room',
   standalone: true,
-  imports: [CommonModule, CodeEditor, Whiteboard],
+  imports: [CommonModule, CodeEditor, Whiteboard, ProblemViewer, ProblemModal],
   templateUrl: './interview-room.html',
   styleUrl: './interview-room.css',
 })
@@ -43,6 +44,7 @@ export class InterviewRoom implements OnInit, OnDestroy {
   private readonly faceMonitoringService = inject(FaceMonitoringService);
   private readonly socketService = inject(SocketService);
   private readonly workspaceService = inject(WorkspaceService);
+  private readonly problemService = inject(ProblemService);
 
   // ─── Core signals ──────────────────────────────────────────────────────
   readonly isLoading = signal<boolean>(true);
@@ -68,14 +70,22 @@ export class InterviewRoom implements OnInit, OnDestroy {
   readonly workspaceCode = signal<string>('');
   readonly isSaving = signal<boolean>(false);
 
-  // ─── Split panel ───────────────────────────────────────────────────────
-  splitRatio = 50;
-  private isDraggingDivider = false;
+  // ─── Whiteboard ────────────────────────────────────────────────────────
+  readonly whiteboardExpanded = signal<boolean>(false);
+  readonly whiteboardWidth = signal<number>(this.loadWhiteboardWidth());
+  private resizeStartX = 0;
+  private resizeStartWidth = 0;
+
+  // ─── Recruiter UI signals ──────────────────────────────────────────────
+  readonly showProblemModal = signal<boolean>(false);
+  readonly isProblemSubmitting = signal<boolean>(false);
+  readonly problemNotification = signal<string | null>(null);
+  private problemNotificationTimer: any = null;
 
   readonly currentUser = this.authService.currentUser;
+  currentInterviewId: string | null = null;
 
   private timerInterval: any;
-  private currentInterviewId: string | null = null;
   private localStream: MediaStream | null = null;
   private peerConnection: RTCPeerConnection | null = null;
   private iceCandidatesQueue: RTCIceCandidateInit[] = [];
@@ -86,22 +96,24 @@ export class InterviewRoom implements OnInit, OnDestroy {
   private pendingWhiteboardSave: Record<string, any> | null = null;
   private readonly AUTO_SAVE_DEBOUNCE_MS = 3000;
 
-  // ── Code-change debounce ───────────────────────────────────────────────
-  // Without this, every single keystroke triggers a socket.emit().
-  // On a fast typist that's ~15-20 events/second per client.  The server
-  // broadcasts each one to every other peer, who then calls setValue(),
-  // which triggers their own onChange, which emits back — an echo storm.
-  //
-  // Debouncing the outgoing emission means rapid typing batches into a
-  // single emit every CODE_EMIT_DEBOUNCE_MS, and the
-  // `setValue()` guard in the editor prevents the echo from re-emitting.
+  // Code-change debounce
   private codeEmitTimer: any = null;
-  private readonly CODE_EMIT_DEBOUNCE_MS = 150; // 150 ms — feels instant
+  private readonly CODE_EMIT_DEBOUNCE_MS = 150;
   private lastEmittedCode: string = '';
 
   private fullscreenChangeHandler = () => {
     this.isFullscreen.set(!!document.fullscreenElement);
   };
+
+  /** Whether the current user is the recruiter */
+  get isRecruiter(): boolean {
+    return this.currentUser()?.role === 'recruiter';
+  }
+
+  /** Computed: current problem from the problem service */
+  get currentProblem() {
+    return this.problemService.currentProblem;
+  }
 
   ngOnInit(): void {
     const interviewId = this.route.snapshot.paramMap.get('interviewId');
@@ -112,12 +124,10 @@ export class InterviewRoom implements OnInit, OnDestroy {
     }
     this.currentInterviewId = interviewId;
 
-    const saved = localStorage.getItem(SPLIT_RATIO_KEY);
-    if (saved) {
-      const val = parseFloat(saved);
-      if (!isNaN(val) && val >= 20 && val <= 80) {
-        this.splitRatio = val;
-      }
+    // Restore whiteboard open state
+    const wbOpen = localStorage.getItem('ig-whiteboard-open');
+    if (wbOpen === 'true') {
+      this.whiteboardExpanded.set(true);
     }
 
     document.addEventListener('fullscreenchange', this.fullscreenChangeHandler);
@@ -133,8 +143,6 @@ export class InterviewRoom implements OnInit, OnDestroy {
     this.cleanupWebRTC();
 
     document.removeEventListener('fullscreenchange', this.fullscreenChangeHandler);
-    document.removeEventListener('mousemove', this.onDividerMouseMove);
-    document.removeEventListener('mouseup', this.onDividerMouseUp);
 
     if (document.fullscreenElement) {
       document.exitFullscreen().catch(() => {});
@@ -156,6 +164,36 @@ export class InterviewRoom implements OnInit, OnDestroy {
     this.socketService.off('whiteboard-change');
     this.socketService.off('connect');
     this.socketService.disconnect();
+
+    this.problemService.removeListeners();
+    if (this.problemNotificationTimer) {
+      clearTimeout(this.problemNotificationTimer);
+    }
+  }
+
+  // ─── Recruiter Question Management ──────────────────────────────────
+
+  openQuestionModal(): void {
+    this.showProblemModal.set(true);
+  }
+
+  onProblemModalSubmit(data: { title: string; description: string; examples?: string; constraints?: string }): void {
+    if (!this.currentInterviewId) return;
+    this.isProblemSubmitting.set(true);
+
+    this.problemService.updateProblem(data, this.currentInterviewId);
+    this.showNotification('Question saved successfully');
+
+    this.showProblemModal.set(false);
+    this.isProblemSubmitting.set(false);
+  }
+
+  private showNotification(message: string): void {
+    if (this.problemNotificationTimer) clearTimeout(this.problemNotificationTimer);
+    this.problemNotification.set(message);
+    this.problemNotificationTimer = setTimeout(() => {
+      this.problemNotification.set(null);
+    }, 3000);
   }
 
   // ─── Participant Management ────────────────────────────────────────────
@@ -177,7 +215,6 @@ export class InterviewRoom implements OnInit, OnDestroy {
   }
 
   private addRemoteParticipant(name: string, role: string): void {
-    // Check if this remote participant already exists to avoid duplicates
     const existing = this.participants().find(p => !p.isLocal && p.name === name);
     if (existing) return;
 
@@ -225,32 +262,6 @@ export class InterviewRoom implements OnInit, OnDestroy {
     }
   }
 
-  // ─── Split Panel Drag ──────────────────────────────────────────────────
-
-  onDividerMouseDown(event: MouseEvent): void {
-    event.preventDefault();
-    this.isDraggingDivider = true;
-    document.addEventListener('mousemove', this.onDividerMouseMove);
-    document.addEventListener('mouseup', this.onDividerMouseUp);
-  }
-
-  private onDividerMouseMove = (e: MouseEvent): void => {
-    if (!this.isDraggingDivider) return;
-    const workspaceEl = document.querySelector('.workspace-area') as HTMLElement;
-    if (!workspaceEl) return;
-    const rect = workspaceEl.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const pct = (x / rect.width) * 100;
-    this.splitRatio = Math.min(80, Math.max(20, pct));
-  };
-
-  private onDividerMouseUp = (): void => {
-    this.isDraggingDivider = false;
-    document.removeEventListener('mousemove', this.onDividerMouseMove);
-    document.removeEventListener('mouseup', this.onDividerMouseUp);
-    localStorage.setItem(SPLIT_RATIO_KEY, String(this.splitRatio));
-  };
-
   // ─── Media ─────────────────────────────────────────────────────────────
 
   private async setupLocalMedia(): Promise<void> {
@@ -261,17 +272,12 @@ export class InterviewRoom implements OnInit, OnDestroy {
       });
       this.localStreamSignal.set(this.localStream);
       this.addLocalParticipant();
-      this.setupLocalStreamWatchers();
     } catch (err) {
       console.error('[WebRTC] Camera/Microphone access failed:', err);
       this.errorMessage.set(
         'Access to camera or microphone was denied. Please grant permissions and reload.'
       );
     }
-  }
-
-  private setupLocalStreamWatchers(): void {
-    this.localStreamSignal.set(this.localStream);
   }
 
   // ─── WebRTC signaling ──────────────────────────────────────────────────
@@ -320,17 +326,10 @@ export class InterviewRoom implements OnInit, OnDestroy {
   private createPeerConnection(): RTCPeerConnection {
     console.log('[WebRTC] Creating new PeerConnection');
     const pc = new RTCPeerConnection({
-      // ── ICE servers ─────────────────────────────────────────────────
-      // Google STUN is free and covers ~85 % of NAT scenarios.
-      // For symmetric NATs (corporate firewalls, some mobile carriers)
-      // you MUST add a TURN server.  The free Metered TURN below
-      // works for dev/staging; replace with your own for production.
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
         { urls: 'stun:stun1.l.google.com:19302' },
         { urls: 'stun:stun2.l.google.com:19302' },
-        // Free Metered TURN (replace with your own for production)
-        // https://www.metered.ca/tools/openrelay/
         {
           urls: 'turn:openrelay.metered.ca:80',
           username: 'openrelayproject',
@@ -389,7 +388,6 @@ export class InterviewRoom implements OnInit, OnDestroy {
       console.log('[WebRTC] Connection state:', pc.connectionState);
       if (pc.connectionState === 'disconnected') {
         console.warn('[WebRTC] Peer disconnected — waiting for ICE restart...');
-        // Give ICE a moment to recover before tearing down
         setTimeout(() => {
           if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
             console.error('[WebRTC] Peer connection failed, cleaning up remote stream');
@@ -437,7 +435,6 @@ export class InterviewRoom implements OnInit, OnDestroy {
     this.peerConnection?.close();
     const pc = this.createPeerConnection();
 
-    // Add remote participant if not already present
     if (senderName) {
       const existing = this.participants().find(p => !p.isLocal && p.name === senderName);
       if (!existing) {
@@ -548,6 +545,66 @@ export class InterviewRoom implements OnInit, OnDestroy {
     }
   }
 
+  toggleWhiteboard(): void {
+    this.whiteboardExpanded.update(v => !v);
+    if (this.whiteboardExpanded()) {
+      // Save the toggle state
+      localStorage.setItem('ig-whiteboard-open', 'true');
+      // Trigger canvas resize after layout transition completes
+      setTimeout(() => {
+        if (this.whiteboard) {
+          this.whiteboard.resizeCanvas();
+        }
+      }, 350);
+    } else {
+      localStorage.setItem('ig-whiteboard-open', 'false');
+    }
+  }
+
+  onWhiteboardResizeStart(e: MouseEvent | TouchEvent): void {
+    e.preventDefault();
+    const isTouch = e.type === 'touchstart';
+    this.resizeStartX = isTouch ? (e as TouchEvent).touches[0].clientX : (e as MouseEvent).clientX;
+    this.resizeStartWidth = this.whiteboardWidth();
+
+    const onMove = (ev: MouseEvent | TouchEvent) => {
+      const currentX = ev.type === 'touchmove' ? (ev as TouchEvent).touches[0].clientX : (ev as MouseEvent).clientX;
+      const delta = this.resizeStartX - currentX;
+      const newWidth = Math.round(Math.min(Math.max(this.resizeStartWidth + delta, 250), window.innerWidth * 0.5));
+      this.whiteboardWidth.set(newWidth);
+    };
+
+    const onEnd = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onEnd);
+      document.removeEventListener('touchmove', onMove);
+      document.removeEventListener('touchend', onEnd);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      // Persist width and resize canvas
+      localStorage.setItem('ig-whiteboard-width', String(this.whiteboardWidth()));
+      if (this.whiteboard) {
+        setTimeout(() => this.whiteboard.resizeCanvas(), 50);
+      }
+    };
+
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onEnd);
+    document.addEventListener('touchmove', onMove);
+    document.addEventListener('touchend', onEnd);
+  }
+
+  private loadWhiteboardWidth(): number {
+    const saved = localStorage.getItem('ig-whiteboard-width');
+    if (saved) {
+      const n = parseInt(saved, 10);
+      if (!isNaN(n) && n >= 250 && n <= 800) return n;
+    }
+    return 350;
+  }
+
   // ─── Workspace ─────────────────────────────────────────────────────────
 
   private setupWorkspaceListeners(): void {
@@ -574,17 +631,10 @@ export class InterviewRoom implements OnInit, OnDestroy {
     }>(
       'code-change',
       (data) => {
-        // ── Double-guard echo prevention ──────────────────────────────
-        //
-        // 1. Server uses `socket.to()` which already excludes the
-        //    sender from the broadcast.
-        // 2. Client checks senderId as a second safety net against
-        //    reconnection race conditions or duplicate events.
         const currentUserId = this.currentUser()?._id;
         if (data.senderId === currentUserId) return;
 
         console.log(`[CodeSync] Received code-change from ${data.senderId} (${data.code.length} chars)`);
-
         this.workspaceCode.set(data.code);
         this.workspaceLanguage.set(data.language);
         if (this.codeEditor) {
@@ -616,29 +666,21 @@ export class InterviewRoom implements OnInit, OnDestroy {
     this.startAutoSave();
   }
 
+  private joinProblemPanel(): void {
+    if (!this.currentInterviewId) return;
+    this.problemService.setupListeners();
+    this.problemService.getCurrentProblem(this.currentInterviewId);
+  }
+
   onCodeChange(code: string): void {
     this.workspaceCode.set(code);
     this.pendingCodeSave = code;
 
-    // ── Debounced socket emission ───────────────────────────────────────
-    //
-    // Rapid typing generates ~15-20 onDidChangeModelContent events per
-    // second.  Emitting each one would flood the server and trigger an
-    // echo storm (remote peer receives → setValue() → onChange → emit → …).
-    //
-    // By debouncing to 150ms, a burst of keystrokes becomes ONE socket
-    // emit.  The remote peer's editor.updateCode() uses a
-    // `_isRemoteUpdate` flag to suppress the onChange echo, breaking the
-    // loop entirely.
-    //
-    // The timer is cleared on each keystroke, so only the LAST keystroke
-    // in a burst is actually sent — no stale intermediate states.
     if (this.codeEmitTimer) {
       clearTimeout(this.codeEmitTimer);
     }
 
     this.codeEmitTimer = setTimeout(() => {
-      // Skip if the code hasn't changed since last emit
       if (code === this.lastEmittedCode) return;
       this.lastEmittedCode = code;
 
@@ -652,11 +694,6 @@ export class InterviewRoom implements OnInit, OnDestroy {
     }, this.CODE_EMIT_DEBOUNCE_MS);
   }
 
-  /**
-   * Called when Monaco Editor fires its onDidPaste event.
-   * The global document paste listener is blocked by Monaco calling preventDefault(),
-   * so we manually report the paste event from here.
-   */
   onCodePaste(): void {
     this.monitoringService.reportEvent('PASTE');
   }
@@ -753,7 +790,6 @@ export class InterviewRoom implements OnInit, OnDestroy {
 
             await this.setupLocalMedia();
 
-            // Start AI face monitoring using the existing local camera stream
             if (this.localStream && candidateId) {
               this.faceMonitoringService.startMonitoring(
                 this.localStream,
@@ -769,6 +805,7 @@ export class InterviewRoom implements OnInit, OnDestroy {
               this.connectionStatus.set('Connected');
               this.socketService.joinInterview(interviewId);
               this.joinWorkspace();
+              this.joinProblemPanel();
             });
 
             this.socketService.listen<{ candidateId: string; score: number; eventType: string }>(
@@ -784,6 +821,7 @@ export class InterviewRoom implements OnInit, OnDestroy {
               this.connectionStatus.set('Connected');
               this.socketService.joinInterview(interviewId);
               this.joinWorkspace();
+              this.joinProblemPanel();
             }
 
             this.isLoading.set(false);

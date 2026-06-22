@@ -1,0 +1,254 @@
+:host { display: block; height: 100%; overflow: hidden; }
+
+.problem-editor {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: #09090b;
+  overflow: hidden;
+}
+
+/* ── Header ──────────────────────────────────────────────────────── */
+
+.pe-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid #1e293b;
+  flex-shrink: 0;
+}
+
+.pe-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pe-icon {
+  width: 16px;
+  height: 16px;
+  color: #a1a1aa;
+}
+
+.pe-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.pe-version {
+  font-size: 10px;
+  font-weight: 600;
+  color: #6366f1;
+  background: rgba(99, 102, 241, 0.15);
+  border: 1px solid rgba(99, 102, 241, 0.25);
+  padding: 2px 6px;
+  border-radius: 9999px;
+}
+
+/* ── Form ────────────────────────────────────────────────────────── */
+
+.pe-form {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  scrollbar-width: thin;
+  scrollbar-color: #27272a transparent;
+}
+
+.pe-form::-webkit-scrollbar { width: 4px; }
+.pe-form::-webkit-scrollbar-track { background: transparent; }
+.pe-form::-webkit-scrollbar-thumb { background: #27272a; border-radius: 2px; }
+
+/* ── Fields ──────────────────────────────────────────────────────── */
+
+.pe-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pe-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #71717a;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.pe-required {
+  color: #f87171;
+}
+
+.pe-input,
+.pe-textarea {
+  background: #18181b;
+  border: 1px solid #27272a;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 12px;
+  color: #f8fafc;
+  font-family: inherit;
+  transition: border-color 0.15s;
+  outline: none;
+}
+
+.pe-input:focus,
+.pe-textarea:focus {
+  border-color: #6366f1;
+}
+
+.pe-input::placeholder,
+.pe-textarea::placeholder {
+  color: #52525b;
+}
+
+.pe-input-error {
+  border-color: #dc2626 !important;
+}
+
+.pe-error {
+  font-size: 10px;
+  color: #f87171;
+}
+
+.pe-textarea {
+  resize: vertical;
+  min-height: 60px;
+  line-height: 1.5;
+}
+
+.pe-textarea-sm {
+  min-height: 40px;
+}
+
+/* ── Actions ─────────────────────────────────────────────────────── */
+
+.pe-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-top: 1px solid #1e293b;
+  flex-shrink: 0;
+}
+
+.pe-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.pe-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pe-btn-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.pe-btn-primary {
+  background: #6366f1;
+  color: #fff;
+  margin-left: auto;
+}
+.pe-btn-primary:hover:not(:disabled) { background: #4f46e5; }
+
+.pe-btn-cancel {
+  background: #27272a;
+  color: #a1a1aa;
+  border: 1px solid #3f3f46;
+}
+.pe-btn-cancel:hover { background: #3f3f46; color: #f8fafc; }
+
+.pe-btn-delete {
+  background: rgba(220, 38, 38, 0.15);
+  color: #f87171;
+  border: 1px solid rgba(220, 38, 38, 0.25);
+}
+.pe-btn-delete:hover { background: #dc2626; color: #fff; }
+
+/* ── Spinner ─────────────────────────────────────────────────────── */
+
+.pe-spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Delete Confirmation Modal ───────────────────────────────────── */
+
+.pe-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.pe-confirm-card {
+  background: #18181b;
+  border: 1px solid #3f3f46;
+  border-radius: 12px;
+  padding: 24px;
+  max-width: 320px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.pe-confirm-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #f87171;
+}
+
+.pe-confirm-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.pe-confirm-text {
+  font-size: 12px;
+  color: #71717a;
+  line-height: 1.5;
+}
+
+.pe-confirm-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
