@@ -66,6 +66,7 @@ export class CodeEditor implements OnInit, OnDestroy {
     { value: 'python', label: 'Python' },
     { value: 'java', label: 'Java' },
     { value: 'cpp', label: 'C++' },
+    { value: "sql", label: "SQL" }
   ];
 
   selectedLanguage = this.initialLanguage;
